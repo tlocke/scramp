@@ -76,9 +76,9 @@ twine upload dist/*
 
 ### Version 0.0.0, 2019-02-10
 
-* Copied SCRAM implementation from https://github.com/tlocke/pg8000[pg8000].
+* Copied SCRAM implementation from [pg8000](https://github.com/tlocke/pg8000).
   The idea is to make it a general SCRAM implemtation. Credit to the
-  https://github.com/cagdass/scrampy[Scrampy] project which I read through to
+  [Scrampy](https://github.com/cagdass/scrampy) project which I read through to
   help with this project. Also credit to the
-  https://github.com/efficks/passlib[passlib] project from which I copied the
+  [passlib](https://github.com/efficks/passlib) project from which I copied the
   `saslprep` function.
