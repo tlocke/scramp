@@ -7,133 +7,170 @@ from stringprep import (
     in_table_c5, in_table_c6, in_table_c7, in_table_c8, in_table_c9,
     in_table_c12, in_table_d1, in_table_d2)
 import unicodedata
-
+from os import urandom
+from enum import IntEnum, unique
 
 # https://tools.ietf.org/html/rfc5802
 # https://www.rfc-editor.org/rfc/rfc7677.txt
 
+
+@unique
+class ClientStage(IntEnum):
+    get_client_first = 1
+    set_server_first = 2
+    get_client_final = 3
+    set_server_final = 4
+
+
+@unique
+class ServerStage(IntEnum):
+    set_client_first = 1
+    get_server_first = 2
+    set_client_final = 3
+    get_server_final = 4
+
+
+def _check_stage(Stages, current_stage, next_stage):
+    if current_stage is None:
+        if next_stage != 1:
+            raise ScramException(
+                "The method " + Stages(1).name + " must be called first.")
+    elif current_stage == 4:
+        raise ScramException(
+            "The authentication sequence has already finished.")
+    elif next_stage != current_stage + 1:
+        raise ScramException(
+            "The next method to be called is " + Stages(current_stage + 1) +
+            ", not this method.")
+
+
+class ScramException(Exception):
+    pass
+
+
+MECHANISMS = ('SCRAM-SHA-256',)
+
+
 class ScramClient():
     def __init__(self, mechanisms, username, password, c_nonce=None):
-        if 'SCRAM-SHA-256' not in mechanisms:
-            raise Exception(
-                "The only recognized mechanism is SCRAM-SHA-256, and this "
-                "can't be found in " + mechanisms + ".")
-        self.mechanisms = mechanisms
+        self.mechanism = None
+        for mech in MECHANISMS:
+            if mech in mechanisms:
+                self.mechanism = mech
+
+        if self.mechanism is None:
+            raise ScramException(
+                "The only recognized mechanisms are " + str(MECHANISMS) +
+                "and none of those can be found in " + mechanisms + ".")
+
         if c_nonce is None:
             self.c_nonce = _make_nonce()
         else:
             self.c_nonce = c_nonce
+
         self.username = username
         self.password = password
+        self.stage = None
 
-    def get_client_first_message(self):
-        self.client_first_message_bare = _client_first_message_bare(
+    def _set_stage(self, next_stage):
+        _check_stage(ClientStage, self.stage, next_stage)
+        self.stage = next_stage
+
+    def get_client_first(self):
+        self._set_stage(ClientStage.get_client_first)
+        self.client_first_bare, client_first = _get_client_first(
             self.username, self.c_nonce)
-        return _client_first_message(self.client_first_message_bare)
+        return client_first
 
-    def set_server_first_message(self, message):
-        self.server_first_message = message
-        msg = _parse_message(message)
-        self.nonce = msg['r']
-        self.salt = msg['s']
-        self.iterations = int(msg['i'])
+    def set_server_first(self, message):
+        self._set_stage(ClientStage.set_server_first)
+        self.server_first = message
+        self.auth_message, self.nonce, self.salt, self.iterations = \
+            _set_server_first(message, self.c_nonce, self.client_first_bare)
 
-        if not self.nonce.startswith(self.c_nonce):
-            raise Exception("Client nonce doesn't match.")
-
-    def get_client_final_message(self):
-        server_signature, cfm = _client_final_message(
+    def get_client_final(self):
+        self._set_stage(ClientStage.get_client_final)
+        self.server_signature, cfinal = _get_client_final(
             self.password, self.salt, self.iterations, self.nonce,
-            self.client_first_message_bare, self.server_first_message)
+            self.auth_message)
+        return cfinal
 
-        self.server_signature = server_signature
-        return cfm
-
-    def set_server_final_message(self, message):
-        msg = _parse_message(message)
-        if self.server_signature != msg['v']:
-            raise Exception("The server signature doesn't match.")
-
-
-'''
-Here's an example using both the client and the server. It's a bit contrived as
-normally you'd be using either the client or server on their own.
-
-```
->>> from scramp import ScramClient, ScramServer
->>>
->>> username = 'user'
->>> password = 'pencil'
->>>
->>> c = ScramClient(['SCRAM-SHA-256'], username, password)
->>> s = ScramServer(['SCRAM-SHA-256'], username, password)
->>>
->>> cfirst = c.get_client_first_message()
->>>
->>> sfirst = s.set_client_first_message(cfirst)
->>>
->>> cfinal = c.set_server_first_message(sfirst)
->>>
->>> sfinal = s.set_client_final_message(cfinal)
->>>
->>> c.set_server_final_message(sfinal)
->>>
->>> # If it all runs through without raising an exception, the authentication
->>> # has succeeded
-```
+    def set_server_final(self, message):
+        self._set_stage(ClientStage.set_server_final)
+        _set_server_final(message, self.server_signature)
 
 
 class ScramServer():
     def __init__(
-            self, mechanisms, password_lookup, s_nonce=None, iterations=4096):
-        if 'SCRAM-SHA-256' not in mechanisms:
-            raise Exception(
-                "The only recognized mechanism is SCRAM-SHA-256, and this "
-                "can't be found in " + mechanisms + ".")
-        self.mechanisms = mechanisms
+            self, password_fn, s_nonce=None, iterations=4096, salt=None,
+            mechanism='SCRAM-SHA-256'):
+        if mechanism not in MECHANISMS:
+            raise ScramException(
+                "The only recognized mechanisms are " + str(MECHANISMS) +
+                ".")
+        self.mechanism = mechanism
+
         if s_nonce is None:
             self.s_nonce = _make_nonce()
         else:
             self.s_nonce = s_nonce
-        self.salt = _b64encode(urandom(16))
-        self.password_lookup = password_lookup
+
+        if salt is None:
+            self.salt = _b64enc(urandom(16))
+        else:
+            self.salt = salt
+
+        self.password_fn = password_fn
         self.iterations = iterations
+        self.stage = None
 
-    def set_client_first_message(self, message):
-        msg = _parse_message(message)
-        c_nonce = msg['r']
-        nonce = c_nonce + self.s_nonce
-        self.user = msg['n']
-        return _server_first_message(nonce, self.salt, self.iterations)
+    def _set_stage(self, next_stage):
+        _check_stage(ServerStage, self.stage, next_stage)
+        self.stage = next_stage
 
-    def set_client_final_message(self, message):
-        msg = _parse_message(message)
-        self.nonce = msg['r']
-        self.salt = msg['s']
-        self.iterations = int(msg['i'])
+    def set_client_first(self, client_first):
+        self._set_stage(ServerStage.set_client_first)
+        self.nonce, self.user, self.client_first_bare = _set_client_first(
+            client_first, self.s_nonce)
+        self.password = self.password_fn(self.user)
 
-        return _set_client_final_message(
-            msg['r'], self.s_nonce, self.iterations, msg['p'])
-        if not self.nonce.startswith(self.c_nonce):
-            raise Exception("Client nonce doesn't match.")
+    def get_server_first(self):
+        self._set_stage(ServerStage.get_server_first)
+        self.auth_message, server_first = _get_server_first(
+            self.nonce, self.salt, self.iterations, self.client_first_bare)
+        return server_first
 
-    def get_client_final_message(self):
-        server_signature, cfm = _client_final_message(
-            self.password, self.salt, self.iterations, self.nonce,
-            self.client_first_message_bare, self.server_first_message)
+    def set_client_final(self, client_final):
+        self._set_stage(ServerStage.set_client_final)
+        self.server_signature = _set_client_final(
+            client_final, self.s_nonce, self.password, self.salt,
+            self.iterations, self.auth_message)
 
-        self.server_signature = server_signature
-        return cfm
-
-    def set_server_final_message(self, message):
-        msg = _parse_message(message)
-        if self.server_signature != msg['v']:
-            raise Exception("The server signature doesn't match.")
-'''
+    def get_server_final(self):
+        self._set_stage(ServerStage.get_server_final)
+        return _get_server_final(self.server_signature)
 
 
 def _make_nonce():
     return str(uuid4()).replace('-', '')
+
+
+def _make_auth_message(nonce, client_first_bare, server_first):
+    msg = client_first_bare, server_first, 'c=' + _b64enc(b'n,,'), 'r=' + nonce
+    return ','.join(msg)
+
+
+def _proof_signature(password, salt, iterations, auth_msg):
+    salted_password = _hi(_uenc(saslprep(password)), _b64dec(salt), iterations)
+    client_key = _hmac(salted_password, b"Client Key")
+    stored_key = _h(client_key)
+
+    client_signature = _hmac(stored_key, _uenc(auth_msg))
+    client_proof = _xor(client_key, client_signature)
+
+    server_key = _hmac(salted_password, b"Server Key")
+    server_signature = _hmac(server_key, _uenc(auth_msg))
+    return _b64enc(client_proof), _b64enc(server_signature)
 
 
 def _hmac(key, msg):
@@ -152,24 +189,16 @@ def _hi(password, salt, iterations):
     return u
 
 
-def hi_iter(password, mac, iterations):
+def _hi_iter(password, mac, iterations):
     if iterations == 0:
         return mac
     else:
         new_mac = _hmac(password, mac)
-        return _xor(hi_iter(password, new_mac, iterations-1), mac)
+        return _xor(_hi_iter(password, new_mac, iterations-1), mac)
 
 
 def _parse_message(msg):
-    return dict((e[0], e[2:]) for e in msg.split(',') if e[1] == '=')
-
-
-def _client_first_message_bare(username, c_nonce):
-    return ','.join(('n=' + saslprep(username), 'r=' + c_nonce))
-
-
-def _client_first_message(client_first_message_bare):
-    return 'n,,' + client_first_message_bare
+    return dict((e[0], e[2:]) for e in msg.split(',') if len(e) > 1)
 
 
 def _b64enc(binary):
@@ -188,54 +217,75 @@ def _xor(bytes1, bytes2):
     return bytes(a ^ b for a, b in zip(bytes1, bytes2))
 
 
-def _client_final_message(
-        password, salt, iterations, nonce, client_first_message_bare,
-        server_first_message):
-
-    salted_password = _hi(_uenc(saslprep(password)), _b64dec(salt), iterations)
-    client_key = _hmac(salted_password, b"Client Key")
-    stored_key = _h(client_key)
-
-    message = ['c=' + _b64enc(b'n,,'), 'r=' + nonce]
-
-    auth_message = ','.join(
-        (client_first_message_bare, server_first_message, ','.join(message)))
-
-    client_signature = _hmac(stored_key, _uenc(auth_message))
-    client_proof = _xor(client_key, client_signature)
-    server_key = _hmac(salted_password, b"Server Key")
-    server_signature = _hmac(server_key, _uenc(auth_message))
-
-    message.append('p=' + _b64enc(client_proof))
-    return _b64enc(server_signature), ','.join(message)
+def _get_client_first(username, c_nonce):
+    bare = ','.join(('n=' + saslprep(username), 'r=' + c_nonce))
+    return bare, 'n,,' + bare
 
 
-'''
-def _server_first_message(nonce, salt, iterations):
-    return ','.join(('r=' + nonce, 's=' + salt, 'i=' + str(iterations)))
+def _set_client_first(client_first, s_nonce):
+    msg = _parse_message(client_first)
+    c_nonce = msg['r']
+    nonce = c_nonce + s_nonce
+    user = msg['n']
+    client_first_bare = client_first[3:]
+
+    return nonce, user, client_first_bare
 
 
-def _set_client_final_message(nonce, s_nonce, iterations, proof, passoword):
-    if not nonce.startswith(s_nonce):
-        raise Exception("Client nonce doesn't match.")
+def _get_server_first(nonce, salt, iterations, client_first_bare):
+    sfirst = ','.join(('r=' + nonce, 's=' + salt, 'i=' + str(iterations)))
+    auth_msg = _make_auth_message(nonce, client_first_bare, sfirst)
+    return auth_msg, sfirst
 
-    salted_password = _hi(_uenc(saslprep(password)), _b64dec(salt), iterations)
-    client_key = _hmac(salted_password, b"Client Key")
-    stored_key = _h(client_key)
 
-    message = ['c=' + _b64enc(b'n,,'), 'r=' + nonce]
+def _set_server_first(server_first, c_nonce, client_first_bare):
+    msg = _parse_message(server_first)
+    nonce = msg['r']
+    salt = msg['s']
+    iterations = int(msg['i'])
 
-    auth_message = ','.join(
-        (client_first_message_bare, server_first_message, ','.join(message)))
+    if not nonce.startswith(c_nonce):
+        raise ScramException("Client nonce doesn't match.")
 
-    client_signature = _hmac(stored_key, _uenc(auth_message))
-    client_proof = _xor(client_key, client_signature)
-    server_key = _hmac(salted_password, b"Server Key")
-    server_signature = _hmac(server_key, _uenc(auth_message))
+    auth_msg = _make_auth_message(nonce, client_first_bare, server_first)
+    return auth_msg, nonce, salt, iterations
 
-    message.append('p=' + _b64enc(client_proof))
-    return _b64enc(server_signature), ','.join(message)
-'''
+
+def _get_client_final(password, salt, iterations, nonce, auth_msg):
+    client_proof, server_signature = _proof_signature(
+            password, salt, iterations, auth_msg)
+
+    message = ['c=' + _b64enc(b'n,,'), 'r=' + nonce, 'p=' + client_proof]
+    return server_signature, ','.join(message)
+
+
+def _set_client_final(
+        client_final, s_nonce, password, salt, iterations, auth_msg):
+
+    msg = _parse_message(client_final)
+    nonce = msg['r']
+    proof = msg['p']
+
+    if not nonce.endswith(s_nonce):
+        raise ScramException("Server nonce doesn't match.")
+
+    client_proof, server_signature = _proof_signature(
+        password, salt, iterations, auth_msg)
+
+    if client_proof != proof:
+        raise ScramException("The proofs don't match")
+
+    return server_signature
+
+
+def _get_server_final(server_signature):
+    return 'v=' + server_signature
+
+
+def _set_server_final(message, server_signature):
+    msg = _parse_message(message)
+    if server_signature != msg['v']:
+        raise ScramException("The server signature doesn't match.")
 
 
 def saslprep(source):
