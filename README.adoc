@@ -1,18 +1,24 @@
-# Scramp
+= Scramp
+:toc: preamble
+:toclevels: 1
 
 A Python implementation of the SCRAM authentication protocol defined by
-[RFC 5802](https://tools.ietf.org/html/rfc5802) and
-[RFC 7677](https://www.rfc-editor.org/rfc/rfc7677.txt).
+https://tools.ietf.org/html/rfc5802[RFC 5802] and
+https://www.rfc-editor.org/rfc/rfc7677.txt[RFC 7677]. Scramp supports the
+following mechanisms:
+
+* SCRAM-SHA-256
+* SCRAM-SHA-1
 
 
-## Installation
+== Installation
 
 * Create a virtual environment: `virtualenv --python=python3 venv`
 * Activate the virtual environment: `source venv/bin/activate`
 * Install: `pip install scramp`
 
 
-## Usage
+== Examples
 
 Here's an example using both the client and the server. It's a bit contrived as
 normally you'd be using either the client or server on its own.
@@ -134,14 +140,80 @@ v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=
 ```
 
 
-## Testing
+== API Docs
+
+
+=== scramp.MECHANISMS
+
+A tuple of the supported mechanisms.
+
+
+=== scramp.ScramClient
+
+`ScramClient(mechanisms, username, password, c_nonce=None)`::
+  Constructor of the `ScramClient` class, with the following parameters:
+  `mechanisms`:::
+    Sequence of mechanism names given by the server. ScramClient will choose
+    the most secure one that it supports.
+  `username`:::
+  `password`:::
+  `c_nonce`:::
+    The client nonce. It's sometimes useful to set this when testing /
+    debugging, but in production this should be omitted, in which case
+    `ScramClient` will generate a client nonce.
+
+The `ScramClient` object has the following methods:
+
+`get_client_first()`::
+  Get the client first message.
+`set_server_first(message)`::
+    Set the first message from the server.
+`get_client_final()`::
+  Get the final client message.
+`set_server_final(message)`::
+  Set the final message from the server.
+
+
+=== scramp.ScramServer
+
+`ScramServer(password_fn, s_nonce=None, iterations=4096, salt=None, mechanism='SCRAM-SHA-256')`::
+  Constructor of the `ScramServer` class, with the following parameters:
+  `password_fn`:::
+    User defined function that accepts a username as a parameter, and returns
+    the password.
+  `s_nonce`:::
+    The server nonce. It's sometimes useful to set this when testing /
+    debugging, but in production this should be omitted, in which case
+    `ScramServer` will generate a server nonce.
+  `iterations`:::
+    Iterations of the encryption algorithm.
+  `salt`:::
+    It's sometimes useful to set this when testing / debugging, but in
+    production this should be omitted, in which case `ScramServer` will
+    generate a salt.
+  `mechanism`:::
+    The SCRAM mechanism to use.
+
+The `ScramServer` object has the following methods:
+
+`set_client_first(message)`::
+  Set the first message from the client.
+`get_server_first()`::
+  Get the server first message.
+`set_client_final(message)`::
+  Set the final client message.
+`get_server_final()`::
+  Get the server final message.
+
+
+== Testing
 
 * Activate the virtual environment: `source venv/bin/activate`
 * Install `tox`: `pip install tox`
 * Run `tox`: `tox`
 
 
-## Doing A Release Of Scramp
+== Doing A Release Of Scramp
 
 Run `tox` to make sure all tests pass, then update the release notes, then do:
 
@@ -154,19 +226,24 @@ twine upload dist/*
 ```
 
 
-## Release Notes
+== Release Notes
 
 
-### Version 1.0.0, 2019-02-17
+=== Version 1.1.0, 2019-02-24
+
+* Add support for the SCRAM-SHA-1 mechanism.
+
+
+=== Version 1.0.0, 2019-02-17
 
 * Implement the server side as well as the client side.
 
 
-### Version 0.0.0, 2019-02-10
+=== Version 0.0.0, 2019-02-10
 
-* Copied SCRAM implementation from [pg8000](https://github.com/tlocke/pg8000).
+* Copied SCRAM implementation from https://github.com/tlocke/pg8000[pg8000].
   The idea is to make it a general SCRAM implemtation. Credit to the
-  [Scrampy](https://github.com/cagdass/scrampy) project which I read through to
+  https://github.com/cagdass/scrampy[Scrampy] project which I read through to
   help with this project. Also credit to the
-  [passlib](https://github.com/efficks/passlib) project from which I copied the
+  https://github.com/efficks/passlib[passlib] project from which I copied the
   `saslprep` function.
