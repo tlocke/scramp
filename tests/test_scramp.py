@@ -1,5 +1,6 @@
-from scramp import ScramClient, ScramServer, ScramException
+from scramp import ScramClient, ScramMechanism, ScramException
 from scramp import core
+from scramp.utils import b64dec
 import hashlib
 import pytest
 
@@ -25,7 +26,9 @@ SCRAM_SHA_1_EXCHANGE = {
     'salt': 'QSXCR+Q6sek8bf92',
     'iterations': 4096,
     'server_signature': 'rmF9pqV8S7suAoZWja4dJRkFsKQ=',
-    'hf': hashlib.sha1
+    'hf': hashlib.sha1,
+    'stored_key': '6dlGYMOdZcOPutkcNY8U2g7vK9Y=',
+    'server_key': 'D+CSWLOshSulAsxiupA+qs2/fTE='
 }
 
 
@@ -47,7 +50,9 @@ SCRAM_SHA_256_EXCHANGE = {
     'salt': 'W22ZaJ0SNY7soEsUEjb6gQ==',
     'iterations': 4096,
     'server_signature': '6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=',
-    'hf': hashlib.sha256
+    'hf': hashlib.sha256,
+    'stored_key': 'WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=',
+    'server_key': 'wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU='
 }
 
 
@@ -123,8 +128,8 @@ def test_get_server_first(mech, x):
 @pytest.mark.parametrize("mech,x", params)
 def test_set_client_final(mech, x):
     server_signature = core._set_client_final(
-        x['hf'], x['cfinal'], x['s_nonce'], PASSWORD, x['salt'],
-        x['iterations'], x['auth_message'])
+        x['hf'], x['cfinal'], x['s_nonce'], b64dec(x['stored_key']),
+        b64dec(x['server_key']), x['auth_message'])
 
     assert server_signature == x['server_signature']
 
@@ -134,16 +139,18 @@ def test_get_server_final(mech, x):
     assert core._get_server_final(x['server_signature']) == x['sfinal']
 
 
-def password_fn(username):
-    lookup = {
-        USERNAME: PASSWORD
-    }
-    return lookup[username]
-
-
 @pytest.mark.parametrize("mech,x", params)
 def test_server_order(mech, x):
-    s = ScramServer(password_fn, mechanism=mech)
+    m = ScramMechanism(mechanism=mech)
+
+    def auth_fn(username):
+        lookup = {
+            USERNAME: m.make_auth_info(
+                PASSWORD, salt=x['salt'], iteration_count=x['iterations'])
+        }
+        return lookup[username]
+
+    s = m.make_server(auth_fn)
 
     with pytest.raises(ScramException):
         s.set_client_final(x['cfinal'])
@@ -151,8 +158,17 @@ def test_server_order(mech, x):
 
 @pytest.mark.parametrize("mech,x", params)
 def test_server(mech, x):
-    s = ScramServer(
-        password_fn, s_nonce=x['s_nonce'], salt=x['salt'], mechanism=mech)
+    m = ScramMechanism(mechanism=mech)
+
+    def auth_fn(username):
+        lookup = {
+            USERNAME: m.make_auth_info(
+                PASSWORD, salt=b64dec(x['salt']),
+                iteration_count=x['iterations'])
+        }
+        return lookup[username]
+
+    s = m.make_server(auth_fn, s_nonce=x['s_nonce'])
 
     s.set_client_first(x['cfirst'])
 

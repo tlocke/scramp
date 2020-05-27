@@ -1,6 +1,4 @@
-import hmac
 from uuid import uuid4
-from base64 import b64encode, b64decode
 import hashlib
 from stringprep import (
     in_table_a1, in_table_b1, in_table_c21_c22, in_table_c3, in_table_c4,
@@ -9,6 +7,7 @@ from stringprep import (
 import unicodedata
 from os import urandom
 from enum import IntEnum, unique
+from scramp.utils import hi, hmac, h, xor, b64enc, uenc, b64dec
 
 # https://tools.ietf.org/html/rfc5802
 # https://www.rfc-editor.org/rfc/rfc7677.txt
@@ -57,6 +56,38 @@ HASHES = {
 }
 
 
+class ScramMechanism():
+    def __init__(self, mechanism='SCRAM-SHA-256'):
+        if mechanism not in MECHANISMS:
+            raise ScramException(
+                "The only recognized mechanisms are " + str(MECHANISMS) +
+                ".")
+        self.mechanism = mechanism
+        self.hf = HASHES[self.mechanism]
+
+    def make_auth_info(self, password, iteration_count=4096, salt=None):
+        salt, stored_key, server_key = _make_auth_info(
+            self.hf, password, iteration_count, salt=salt)
+        return salt, stored_key, server_key, iteration_count
+
+    def make_stored_server_keys(self, salted_password):
+        _, stored_key, server_key = _c_key_stored_key_s_key(
+            self.hf, salted_password)
+        return stored_key, server_key
+
+    def make_server(self, auth_fn, s_nonce=None):
+        return ScramServer(self, auth_fn, s_nonce=s_nonce)
+
+
+def _make_auth_info(hf, password, i, salt=None):
+    if salt is None:
+        salt = urandom(16)
+
+    salted_password = _make_salted_password(hf, password, salt, i)
+    _, stored_key, server_key = _c_key_stored_key_s_key(hf, salted_password)
+    return salt, stored_key, server_key
+
+
 class ScramClient():
     def __init__(self, mechanisms, username, password, c_nonce=None):
         self.mech = None
@@ -70,12 +101,7 @@ class ScramClient():
                 "and none of those can be found in " + mechanisms + ".")
 
         self.hf = HASHES[self.mech]
-
-        if c_nonce is None:
-            self.c_nonce = _make_nonce()
-        else:
-            self.c_nonce = c_nonce
-
+        self.c_nonce = _make_nonce() if c_nonce is None else c_nonce
         self.username = username
         self.password = password
         self.stage = None
@@ -109,28 +135,10 @@ class ScramClient():
 
 
 class ScramServer():
-    def __init__(
-            self, password_fn, s_nonce=None, iterations=4096, salt=None,
-            mechanism='SCRAM-SHA-256'):
-        if mechanism not in MECHANISMS:
-            raise ScramException(
-                "The only recognized mechanisms are " + str(MECHANISMS) +
-                ".")
-        self.mechanism = mechanism
-        self.hf = HASHES[self.mechanism]
-
-        if s_nonce is None:
-            self.s_nonce = _make_nonce()
-        else:
-            self.s_nonce = s_nonce
-
-        if salt is None:
-            self.salt = _b64enc(urandom(16))
-        else:
-            self.salt = salt
-
-        self.password_fn = password_fn
-        self.iterations = iterations
+    def __init__(self, mechanism, auth_fn, s_nonce=None):
+        self.m = mechanism
+        self.s_nonce = _make_nonce() if s_nonce is None else s_nonce
+        self.auth_fn = auth_fn
         self.stage = None
 
     def _set_stage(self, next_stage):
@@ -141,19 +149,21 @@ class ScramServer():
         self._set_stage(ServerStage.set_client_first)
         self.nonce, self.user, self.client_first_bare = _set_client_first(
             client_first, self.s_nonce)
-        self.password = self.password_fn(self.user)
+        salt, self.stored_key, self.server_key, self.i = self.auth_fn(
+            self.user)
+        self.salt = b64enc(salt)
 
     def get_server_first(self):
         self._set_stage(ServerStage.get_server_first)
         self.auth_message, server_first = _get_server_first(
-            self.nonce, self.salt, self.iterations, self.client_first_bare)
+            self.nonce, self.salt, self.i, self.client_first_bare)
         return server_first
 
     def set_client_final(self, client_final):
         self._set_stage(ServerStage.set_client_final)
         self.server_signature = _set_client_final(
-            self.hf, client_final, self.s_nonce, self.password, self.salt,
-            self.iterations, self.auth_message)
+            self.m.hf, client_final, self.s_nonce, self.stored_key,
+            self.server_key, self.auth_message)
 
     def get_server_final(self):
         self._set_stage(ServerStage.get_server_final)
@@ -165,66 +175,33 @@ def _make_nonce():
 
 
 def _make_auth_message(nonce, client_first_bare, server_first):
-    msg = client_first_bare, server_first, 'c=' + _b64enc(b'n,,'), 'r=' + nonce
+    msg = client_first_bare, server_first, 'c=' + b64enc(b'n,,'), 'r=' + nonce
     return ','.join(msg)
 
 
-def _proof_signature(hf, password, salt, iterations, auth_msg):
-    salted_password = _hi(
-        hf, _uenc(saslprep(password)), _b64dec(salt), iterations)
-    client_key = _hmac(hf, salted_password, b"Client Key")
-    stored_key = _h(hf, client_key)
-
-    client_signature = _hmac(hf, stored_key, _uenc(auth_msg))
-    client_proof = _xor(client_key, client_signature)
-
-    server_key = _hmac(hf, salted_password, b"Server Key")
-    server_signature = _hmac(hf, server_key, _uenc(auth_msg))
-    return _b64enc(client_proof), _b64enc(server_signature)
+def _make_salted_password(hf, password, salt, iterations):
+    return hi(hf, uenc(saslprep(password)), salt, iterations)
 
 
-def _hmac(hf, key, msg):
-    return hmac.new(key, msg=msg, digestmod=hf).digest()
+def _c_key_stored_key_s_key(hf, salted_password):
+    client_key = hmac(hf, salted_password, b"Client Key")
+    stored_key = h(hf, client_key)
+    server_key = hmac(hf, salted_password, b"Server Key")
+
+    return client_key, stored_key, server_key
 
 
-def _h(hf, msg):
-    return hf(msg).digest()
+def _check_client_key(hf, stored_key, auth_msg, proof):
+    client_signature = hmac(hf, stored_key, auth_msg)
+    client_key = xor(client_signature, b64dec(proof))
+    key = h(hf, client_key)
 
-
-def _hi(hf, password, salt, iterations):
-    u = ui = _hmac(hf, password, salt + b'\x00\x00\x00\x01')
-    for i in range(iterations - 1):
-        ui = _hmac(hf, password, ui)
-        u = _xor(u, ui)
-    return u
-
-
-def _hi_iter(password, mac, iterations):
-    if iterations == 0:
-        return mac
-    else:
-        new_mac = _hmac(password, mac)
-        return _xor(_hi_iter(password, new_mac, iterations-1), mac)
+    if key != stored_key:
+        raise ScramException("The client keys don't match.")
 
 
 def _parse_message(msg):
     return dict((e[0], e[2:]) for e in msg.split(',') if len(e) > 1)
-
-
-def _b64enc(binary):
-    return b64encode(binary).decode('utf8')
-
-
-def _b64dec(string):
-    return b64decode(string)
-
-
-def _uenc(string):
-    return string.encode('utf-8')
-
-
-def _xor(bytes1, bytes2):
-    return bytes(a ^ b for a, b in zip(bytes1, bytes2))
 
 
 def _get_client_first(username, c_nonce):
@@ -261,16 +238,25 @@ def _set_server_first(server_first, c_nonce, client_first_bare):
     return auth_msg, nonce, salt, iterations
 
 
-def _get_client_final(hf, password, salt, iterations, nonce, auth_msg):
-    client_proof, server_signature = _proof_signature(
-            hf, password, salt, iterations, auth_msg)
+def _get_client_final(hf, password, salt_str, iterations, nonce, auth_msg_str):
+    salt = b64dec(salt_str)
+    salted_password = _make_salted_password(hf, password, salt, iterations)
+    client_key, stored_key, server_key = _c_key_stored_key_s_key(
+        hf, salted_password)
 
-    message = ['c=' + _b64enc(b'n,,'), 'r=' + nonce, 'p=' + client_proof]
-    return server_signature, ','.join(message)
+    auth_msg = uenc(auth_msg_str)
+
+    client_signature = hmac(hf, stored_key, auth_msg)
+    client_proof = xor(client_key, client_signature)
+    server_signature = hmac(hf, server_key, auth_msg)
+
+    msg = ['c=' + b64enc(b'n,,'), 'r=' + nonce, 'p=' + b64enc(client_proof)]
+    return b64enc(server_signature), ','.join(msg)
 
 
 def _set_client_final(
-        hf, client_final, s_nonce, password, salt, iterations, auth_msg):
+        hf, client_final, s_nonce, stored_key, server_key, auth_msg_str):
+    auth_msg = uenc(auth_msg_str)
 
     msg = _parse_message(client_final)
     nonce = msg['r']
@@ -279,13 +265,10 @@ def _set_client_final(
     if not nonce.endswith(s_nonce):
         raise ScramException("Server nonce doesn't match.")
 
-    client_proof, server_signature = _proof_signature(
-        hf, password, salt, iterations, auth_msg)
+    _check_client_key(hf, stored_key, auth_msg, proof)
 
-    if client_proof != proof:
-        raise ScramException("The proofs don't match")
-
-    return server_signature
+    sig = hmac(hf, server_key, auth_msg)
+    return b64enc(sig)
 
 
 def _get_server_final(server_signature):

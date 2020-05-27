@@ -1,3 +1,3 @@
-from scramp.core import ScramClient, ScramServer, ScramException
+from scramp.core import ScramClient, ScramMechanism, ScramException
 
-__all__ = [ScramClient, ScramServer, ScramException]
+__all__ = [ScramClient, ScramMechanism, ScramException]
