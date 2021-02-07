@@ -56,7 +56,11 @@ MECHANISMS = (
     'SCRAM-SHA-1',
     'SCRAM-SHA-1-PLUS',
     'SCRAM-SHA-256',
-    'SCRAM-SHA-256-PLUS'
+    'SCRAM-SHA-256-PLUS',
+    'SCRAM-SHA-512',
+    'SCRAM-SHA-512-PLUS',
+    'SCRAM-SHA3-512',
+    'SCRAM-SHA3-512-PLUS'
 )
 
 
@@ -92,10 +96,14 @@ def make_channel_binding(name, ssl_socket):
 
 class ScramMechanism():
     MECH_LOOKUP = {
-        'SCRAM-SHA-1': (hashlib.sha1, False, 0),
-        'SCRAM-SHA-1-PLUS': (hashlib.sha1, True, 1),
-        'SCRAM-SHA-256': (hashlib.sha256, False, 2),
-        'SCRAM-SHA-256-PLUS': (hashlib.sha256, True, 3),
+        'SCRAM-SHA-1': (hashlib.sha1, False, 4096, 0),
+        'SCRAM-SHA-1-PLUS': (hashlib.sha1, True, 4096, 1),
+        'SCRAM-SHA-256': (hashlib.sha256, False, 4096, 2),
+        'SCRAM-SHA-256-PLUS': (hashlib.sha256, True, 4096, 3),
+        'SCRAM-SHA-512': (hashlib.sha512, False, 4096, 4),
+        'SCRAM-SHA-512-PLUS': (hashlib.sha512, True, 4096, 5),
+        'SCRAM-SHA3-512': (hashlib.sha3_512, False, 10000, 6),
+        'SCRAM-SHA3-512-PLUS': (hashlib.sha3_512, True, 10000, 7),
     }
 
     def __init__(self, mechanism='SCRAM-SHA-256'):
@@ -104,9 +112,12 @@ class ScramMechanism():
                 f"The mechanism name '{mechanism}' is not supported. The "
                 f"supported mechanisms are {MECHANISMS}.")
         self.name = mechanism
-        self.hf, self.use_binding, self.strength = self.MECH_LOOKUP[mechanism]
+        self.hf, self.use_binding, self.iteration_count, self.strength = \
+            self.MECH_LOOKUP[mechanism]
 
-    def make_auth_info(self, password, iteration_count=4096, salt=None):
+    def make_auth_info(self, password, iteration_count=None, salt=None):
+        if iteration_count is None:
+            iteration_count = self.iteration_count
         salt, stored_key, server_key = _make_auth_info(
             self.hf, password, iteration_count, salt=salt)
         return salt, stored_key, server_key, iteration_count

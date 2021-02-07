@@ -7,10 +7,14 @@ https://tools.ietf.org/html/rfc5802[RFC 5802] and
 https://www.rfc-editor.org/rfc/rfc7677.txt[RFC 7677]. Scramp supports the
 following mechanisms:
 
-* SCRAM-SHA-256-PLUS
-* SCRAM-SHA-256
-* SCRAM-SHA-1-PLUS
 * SCRAM-SHA-1
+* SCRAM-SHA-1-PLUS
+* SCRAM-SHA-256
+* SCRAM-SHA-256-PLUS
+* SCRAM-SHA-512
+* SCRAM-SHA-512-PLUS
+* SCRAM-SHA3-512
+* SCRAM-SHA3-512-PLUS
 
 
 == Installation
@@ -286,16 +290,17 @@ The `ScramClient` object has the following methods and properties:
   `mechanism`:::
     The SCRAM mechanism to use.
 
-The `ScramMechanism` object has the following methods:
+The `ScramMechanism` object has the following methods and properties:
 
-`make_auth_info(password, iteration_count=4096, salt=None)`::
+`make_auth_info(password, iteration_count=None, salt=None)`::
   returns the tuple `(salt, stored_key, server_key, iteration_count)` which is
   stored in the authentication database on the server side. It has the
   following parameters:
   `password`:::
     The user's password as a `str`.
   `iteration_count`:::
-    The rounds as an `int`.
+    The rounds as an `int`. If `None` then use the minimum associated with the
+    mechanism.
   `salt`:::
     It's sometimes useful to set this binary parameter when testing /
     debugging, but in production this should be omitted, in which case a salt
@@ -331,6 +336,9 @@ The `ScramMechanism` object has the following methods:
 
   `salted_password`:::
     A binary object representing the hashed password.
+
+`iteration_count`::
+    The minimum iteration count recommended for this mechanism.
 
 
 === scramp.ScramServer
