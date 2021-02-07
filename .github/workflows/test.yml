@@ -1,0 +1,47 @@
+name: scramp
+
+on: [push]
+
+jobs:
+  pytest:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.6, 3.7, 3.8]
+
+    container: python:${{ matrix.python-version }}
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock
+          python setup.py install
+
+      - name: Run pytest tests
+        run: |
+          python -m pytest -x -v test 
+
+  checks:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 flake8-import-order passlib
+          python setup.py install
+
+      - name: Run checks
+        run: |
+          python -m doctest README.adoc
+          flake8 scramp test
+          python setup.py check
