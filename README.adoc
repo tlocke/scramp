@@ -389,6 +389,14 @@ twine upload dist/*
 
 == Release Notes
 
+=== Version 1.2.1, 2021-02-07
+
+* Add support for channel binding.
+
+* Add support for SCRAM-SHA-512 and SCRAM-SHA3-512 and their channel binding
+  variants.
+
+
 === Version 1.2.0, 2020-05-30
 
 * This is a backwardly incompatible change on the server side, the client side
