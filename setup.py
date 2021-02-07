@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import versioneer
 from setuptools import setup
+
+import versioneer
 
 long_description = """
 
@@ -23,16 +24,17 @@ setup(
     long_description=long_description,
     url="https://github.com/tlocke/scramp",
     license="MIT",
-    python_requires='>=3.5',
-    install_requires=[],
+    python_requires='>=3.6',
+    install_requires=['asn1crypto==1.4.0'],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: Implementation",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: Jython",

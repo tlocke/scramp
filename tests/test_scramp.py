@@ -1,8 +1,9 @@
-from scramp import ScramClient, ScramMechanism, ScramException
-from scramp import core
-from scramp.utils import b64dec
 import hashlib
+
 import pytest
+
+from scramp import ScramClient, ScramException, ScramMechanism, core
+from scramp.utils import b64dec
 
 USERNAME = 'user'
 PASSWORD = 'pencil'
@@ -28,9 +29,38 @@ SCRAM_SHA_1_EXCHANGE = {
     'server_signature': 'rmF9pqV8S7suAoZWja4dJRkFsKQ=',
     'hf': hashlib.sha1,
     'stored_key': '6dlGYMOdZcOPutkcNY8U2g7vK9Y=',
-    'server_key': 'D+CSWLOshSulAsxiupA+qs2/fTE='
+    'server_key': 'D+CSWLOshSulAsxiupA+qs2/fTE=',
+    'use_binding': False,
+    'cbind_data': None,
+    'channel_binding': None,
 }
 
+SCRAM_SHA_1_PLUS_EXCHANGE = {
+    'cfirst': 'p=tls-unique,,n=user,r=fyko+d2lbbFgONRv9qkxdawL',
+    'sfirst': 'r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,'
+    's=QSXCR+Q6sek8bf92,i=4096',
+    'cfinal': 'c=cD10bHMtdW5pcXVlLCx4eHg=,'
+    'r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,'
+    'p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts=',
+    'sfinal': 'v=rmF9pqV8S7suAoZWja4dJRkFsKQ=',
+    'cfirst_bare': 'n=user,r=fyko+d2lbbFgONRv9qkxdawL',
+    'c_nonce': 'fyko+d2lbbFgONRv9qkxdawL',
+    's_nonce': '3rfcNHYJY1ZVvWVs7j',
+    'nonce': 'fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j',
+    'auth_message': 'n=user,r=fyko+d2lbbFgONRv9qkxdawL,'
+    'r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,'
+    's=QSXCR+Q6sek8bf92,i=4096,c=biws,'
+    'r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j',
+    'salt': 'QSXCR+Q6sek8bf92',
+    'iterations': 4096,
+    'server_signature': 'rmF9pqV8S7suAoZWja4dJRkFsKQ=',
+    'hf': hashlib.sha1,
+    'stored_key': '6dlGYMOdZcOPutkcNY8U2g7vK9Y=',
+    'server_key': 'D+CSWLOshSulAsxiupA+qs2/fTE=',
+    'use_binding': True,
+    'cbind_data': b'xxx',
+    'channel_binding': ('tls-unique', b'xxx'),
+}
 
 SCRAM_SHA_256_EXCHANGE = {
     'cfirst': 'n,,n=user,r=rOprNGfwEbeRWgbNEkqO',
@@ -52,19 +82,51 @@ SCRAM_SHA_256_EXCHANGE = {
     'server_signature': '6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=',
     'hf': hashlib.sha256,
     'stored_key': 'WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=',
-    'server_key': 'wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU='
+    'server_key': 'wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU=',
+    'use_binding': False,
+    'cbind_data': None,
+    'channel_binding': None,
 }
 
+SCRAM_SHA_256_PLUS_EXCHANGE = {
+    'cfirst': 'p=tls-unique,,n=user,r=rOprNGfwEbeRWgbNEkqO',
+    'sfirst': 'r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,'
+    's=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096',
+    'cfinal': 'c=cD10bHMtdW5pcXVlLCx4eHg=,'
+    'r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,'
+    'p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ=',
+    'sfinal': 'v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=',
+    'cfirst_bare': 'n=user,r=rOprNGfwEbeRWgbNEkqO',
+    'c_nonce': 'rOprNGfwEbeRWgbNEkqO',
+    's_nonce': '%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0',
+    'nonce': 'rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0',
+    'auth_message': 'n=user,r=rOprNGfwEbeRWgbNEkqO,'
+    'r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,'
+    's=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,c=biws,'
+    'r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0',
+    'salt': 'W22ZaJ0SNY7soEsUEjb6gQ==',
+    'iterations': 4096,
+    'server_signature': '6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=',
+    'hf': hashlib.sha256,
+    'stored_key': 'WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=',
+    'server_key': 'wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU=',
+    'use_binding': True,
+    'cbind_data': b'xxx',
+    'channel_binding': ('tls-unique', b'xxx'),
+}
 
 params = [
     ('SCRAM-SHA-1', SCRAM_SHA_1_EXCHANGE),
-    ('SCRAM-SHA-256', SCRAM_SHA_256_EXCHANGE)
+    ('SCRAM-SHA-1-PLUS', SCRAM_SHA_1_PLUS_EXCHANGE),
+    ('SCRAM-SHA-256', SCRAM_SHA_256_EXCHANGE),
+    ('SCRAM-SHA-256-PLUS', SCRAM_SHA_256_PLUS_EXCHANGE),
 ]
 
 
 @pytest.mark.parametrize("mech,x", params)
 def test_get_client_first(mech, x):
-    cfirst_bare, cfirst = core._get_client_first(USERNAME, x['c_nonce'])
+    cfirst_bare, cfirst = core._get_client_first(
+        USERNAME, x['c_nonce'], x['channel_binding'])
 
     assert cfirst_bare == x['cfirst_bare']
     assert cfirst == x['cfirst']
@@ -81,7 +143,7 @@ def test_make_auth_message(mech, x):
 def test_get_client_final(mech, x):
     server_signature, cfinal = core._get_client_final(
         x['hf'], PASSWORD, x['salt'], x['iterations'], x['nonce'],
-        x['auth_message'])
+        x['auth_message'], x['channel_binding'])
 
     assert server_signature == x['server_signature']
     assert cfinal == x['cfinal']
@@ -89,7 +151,8 @@ def test_get_client_final(mech, x):
 
 @pytest.mark.parametrize("mech,x", params)
 def test_client_order(mech, x):
-    c = ScramClient([mech], USERNAME, PASSWORD)
+    c = ScramClient(
+        [mech], USERNAME, PASSWORD, channel_binding=x['channel_binding'])
 
     with pytest.raises(ScramException):
         c.set_server_first(x['sfirst'])
@@ -97,7 +160,9 @@ def test_client_order(mech, x):
 
 @pytest.mark.parametrize("mech,x", params)
 def test_client(mech, x):
-    c = ScramClient([mech], USERNAME, PASSWORD, c_nonce=x['c_nonce'])
+    c = ScramClient(
+        [mech], USERNAME, PASSWORD, channel_binding=x['channel_binding'],
+        c_nonce=x['c_nonce'])
 
     assert c.get_client_first() == x['cfirst']
 
@@ -109,7 +174,7 @@ def test_client(mech, x):
 @pytest.mark.parametrize("mech,x", params)
 def test_set_client_first(mech, x):
     nonce, user, cfirst_bare = core._set_client_first(
-        x['cfirst'], x['s_nonce'])
+        x['cfirst'], x['s_nonce'], x['channel_binding'])
 
     assert nonce == x['nonce']
     assert user == USERNAME
@@ -129,7 +194,7 @@ def test_get_server_first(mech, x):
 def test_set_client_final(mech, x):
     server_signature = core._set_client_final(
         x['hf'], x['cfinal'], x['s_nonce'], b64dec(x['stored_key']),
-        b64dec(x['server_key']), x['auth_message'])
+        b64dec(x['server_key']), x['auth_message'], x['channel_binding'])
 
     assert server_signature == x['server_signature']
 
@@ -150,7 +215,7 @@ def test_server_order(mech, x):
         }
         return lookup[username]
 
-    s = m.make_server(auth_fn)
+    s = m.make_server(auth_fn, channel_binding=x['channel_binding'])
 
     with pytest.raises(ScramException):
         s.set_client_final(x['cfinal'])
@@ -168,7 +233,8 @@ def test_server(mech, x):
         }
         return lookup[username]
 
-    s = m.make_server(auth_fn, s_nonce=x['s_nonce'])
+    s = m.make_server(
+        auth_fn, channel_binding=x['channel_binding'], s_nonce=x['s_nonce'])
 
     s.set_client_first(x['cfirst'])
 
