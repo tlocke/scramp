@@ -389,6 +389,12 @@ twine upload dist/*
 
 == Release Notes
 
+=== Version 1.2.2, 2021-02-13
+
+* Fix bug in generating the AuthMessage. It was incorrect when channel binding
+  was used. So now Scramp supports channel binding.
+
+
 === Version 1.2.1, 2021-02-07
 
 * Add support for channel binding.
