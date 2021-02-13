@@ -41,19 +41,19 @@ SCRAM_SHA_1_PLUS_EXCHANGE = {
     's=QSXCR+Q6sek8bf92,i=4096',
     'cfinal': 'c=cD10bHMtdW5pcXVlLCx4eHg=,'
     'r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,'
-    'p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts=',
-    'sfinal': 'v=rmF9pqV8S7suAoZWja4dJRkFsKQ=',
+    'p=/63TtbB5lIS6610+k4/luJMJqAI=',
+    'sfinal': 'v=GCPHy5gy1sRwXTCbwNhiiWIzLtU=',
     'cfirst_bare': 'n=user,r=fyko+d2lbbFgONRv9qkxdawL',
     'c_nonce': 'fyko+d2lbbFgONRv9qkxdawL',
     's_nonce': '3rfcNHYJY1ZVvWVs7j',
     'nonce': 'fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j',
     'auth_message': 'n=user,r=fyko+d2lbbFgONRv9qkxdawL,'
     'r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,'
-    's=QSXCR+Q6sek8bf92,i=4096,c=biws,'
+    's=QSXCR+Q6sek8bf92,i=4096,c=cD10bHMtdW5pcXVlLCx4eHg=,'
     'r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j',
     'salt': 'QSXCR+Q6sek8bf92',
     'iterations': 4096,
-    'server_signature': 'rmF9pqV8S7suAoZWja4dJRkFsKQ=',
+    'server_signature': 'GCPHy5gy1sRwXTCbwNhiiWIzLtU=',
     'hf': hashlib.sha1,
     'stored_key': '6dlGYMOdZcOPutkcNY8U2g7vK9Y=',
     'server_key': 'D+CSWLOshSulAsxiupA+qs2/fTE=',
@@ -94,19 +94,19 @@ SCRAM_SHA_256_PLUS_EXCHANGE = {
     's=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096',
     'cfinal': 'c=cD10bHMtdW5pcXVlLCx4eHg=,'
     'r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,'
-    'p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ=',
-    'sfinal': 'v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=',
+    'p=v0J7PaQUPWowoTrwRLCKLzIZBpNUhWFlTrUKI1j9DpM=',
+    'sfinal': 'v=XjAev9iHBOvTxT+eNzBaFmP1IrqWah2PpZAa0wQrfY4=',
     'cfirst_bare': 'n=user,r=rOprNGfwEbeRWgbNEkqO',
     'c_nonce': 'rOprNGfwEbeRWgbNEkqO',
     's_nonce': '%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0',
     'nonce': 'rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0',
     'auth_message': 'n=user,r=rOprNGfwEbeRWgbNEkqO,'
     'r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,'
-    's=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,c=biws,'
+    's=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,c=cD10bHMtdW5pcXVlLCx4eHg=,'
     'r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0',
     'salt': 'W22ZaJ0SNY7soEsUEjb6gQ==',
     'iterations': 4096,
-    'server_signature': '6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=',
+    'server_signature': 'XjAev9iHBOvTxT+eNzBaFmP1IrqWah2PpZAa0wQrfY4=',
     'hf': hashlib.sha256,
     'stored_key': 'WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=',
     'server_key': 'wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU=',
@@ -135,7 +135,7 @@ def test_get_client_first(mech, x):
 @pytest.mark.parametrize("mech,x", params)
 def test_make_auth_message(mech, x):
     auth_msg = core._make_auth_message(
-        x['nonce'], x['cfirst_bare'], x['sfirst'])
+        x['nonce'], x['cfirst_bare'], x['sfirst'], x['channel_binding'])
     assert auth_msg == x['auth_message']
 
 
@@ -184,7 +184,8 @@ def test_set_client_first(mech, x):
 @pytest.mark.parametrize("mech,x", params)
 def test_get_server_first(mech, x):
     auth_message, sfirst = core._get_server_first(
-        x['nonce'], x['salt'], x['iterations'], x['cfirst_bare'])
+        x['nonce'], x['salt'], x['iterations'], x['cfirst_bare'],
+        x['channel_binding'])
 
     assert auth_message == x['auth_message']
     assert sfirst == x['sfirst']

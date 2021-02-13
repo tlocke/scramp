@@ -221,7 +221,9 @@ class ScramClient():
         self._set_stage(ClientStage.set_server_first)
         self.server_first = message
         self.auth_message, self.nonce, self.salt, self.iterations = \
-            _set_server_first(message, self.c_nonce, self.client_first_bare)
+            _set_server_first(
+                message, self.c_nonce, self.client_first_bare,
+                self.channel_binding)
 
     def get_client_final(self):
         self._set_stage(ClientStage.get_client_final)
@@ -273,7 +275,8 @@ class ScramServer():
     def get_server_first(self):
         self._set_stage(ServerStage.get_server_first)
         self.auth_message, server_first = _get_server_first(
-            self.nonce, self.salt, self.i, self.client_first_bare)
+            self.nonce, self.salt, self.i, self.client_first_bare,
+            self.channel_binding)
         return server_first
 
     def set_client_final(self, client_final):
@@ -291,8 +294,9 @@ def _make_nonce():
     return str(uuid4()).replace('-', '')
 
 
-def _make_auth_message(nonce, client_first_bare, server_first):
-    msg = client_first_bare, server_first, 'c=' + b64enc(b'n,,'), 'r=' + nonce
+def _make_auth_message(nonce, client_first_bare, server_first, cbind_data):
+    cbind_input = b64enc(_make_cbind_input(cbind_data))
+    msg = client_first_bare, server_first, 'c=' + cbind_input, 'r=' + nonce
     return ','.join(msg)
 
 
@@ -390,13 +394,16 @@ def _set_client_first(client_first, s_nonce, channel_binding):
     return nonce, user, client_first_bare
 
 
-def _get_server_first(nonce, salt, iterations, client_first_bare):
+def _get_server_first(
+        nonce, salt, iterations, client_first_bare, channel_binding):
     sfirst = ','.join(('r=' + nonce, 's=' + salt, 'i=' + str(iterations)))
-    auth_msg = _make_auth_message(nonce, client_first_bare, sfirst)
+    auth_msg = _make_auth_message(
+        nonce, client_first_bare, sfirst, channel_binding)
     return auth_msg, sfirst
 
 
-def _set_server_first(server_first, c_nonce, client_first_bare):
+def _set_server_first(
+        server_first, c_nonce, client_first_bare, channel_binding):
     msg = _parse_message(server_first)
     nonce = msg['r']
     salt = msg['s']
@@ -405,7 +412,8 @@ def _set_server_first(server_first, c_nonce, client_first_bare):
     if not nonce.startswith(c_nonce):
         raise ScramException("Client nonce doesn't match.")
 
-    auth_msg = _make_auth_message(nonce, client_first_bare, server_first)
+    auth_msg = _make_auth_message(
+        nonce, client_first_bare, server_first, channel_binding)
     return auth_msg, nonce, salt, iterations
 
 
