@@ -1,6 +1,7 @@
 import hashlib
 import unicodedata
 from enum import IntEnum, unique
+from functools import wraps
 from operator import attrgetter
 from os import urandom
 from stringprep import (
@@ -44,12 +45,18 @@ def _check_stage(Stages, current_stage, next_stage):
             "The authentication sequence has already finished.")
     elif next_stage != current_stage + 1:
         raise ScramException(
-            f"The next method to be called is {Stages(current_stage + 1)}, "
-            "not this method.")
+            f"The next method to be called is "
+            f"{Stages(current_stage + 1).name}, not this method.")
 
 
 class ScramException(Exception):
-    pass
+    def __init__(self, message, server_error=None):
+        super().__init__(message)
+        self.server_error = server_error
+
+    def __str__(self):
+        s_str = '' if self.server_error is None else f' {self.server_error}'
+        return super().__str__() + s_str
 
 
 MECHANISMS = (
@@ -237,6 +244,19 @@ class ScramClient():
         _set_server_final(message, self.server_signature)
 
 
+def set_error(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwds):
+        try:
+            return f(self, *args, **kwds)
+        except ScramException as e:
+            if e.server_error is not None:
+                self.error = e.server_error
+                self.stage = ServerStage.set_client_final
+            raise e
+    return wrapper
+
+
 class ScramServer():
     def __init__(self, mechanism, auth_fn, channel_binding=None, s_nonce=None):
         self.m = mechanism
@@ -259,11 +279,14 @@ class ScramServer():
         self.s_nonce = _make_nonce() if s_nonce is None else s_nonce
         self.auth_fn = auth_fn
         self.stage = None
+        self.server_signature = None
+        self.error = None
 
     def _set_stage(self, next_stage):
         _check_stage(ServerStage, self.stage, next_stage)
         self.stage = next_stage
 
+    @set_error
     def set_client_first(self, client_first):
         self._set_stage(ServerStage.set_client_first)
         self.nonce, self.user, self.client_first_bare = _set_client_first(
@@ -272,6 +295,7 @@ class ScramServer():
             self.user)
         self.salt = b64enc(salt)
 
+    @set_error
     def get_server_first(self):
         self._set_stage(ServerStage.get_server_first)
         self.auth_message, server_first = _get_server_first(
@@ -279,15 +303,17 @@ class ScramServer():
             self.channel_binding)
         return server_first
 
+    @set_error
     def set_client_final(self, client_final):
         self._set_stage(ServerStage.set_client_final)
         self.server_signature = _set_client_final(
             self.m.hf, client_final, self.s_nonce, self.stored_key,
             self.server_key, self.auth_message, self.channel_binding)
 
+    @set_error
     def get_server_final(self):
         self._set_stage(ServerStage.get_server_final)
-        return _get_server_final(self.server_signature)
+        return _get_server_final(self.server_signature, self.error)
 
 
 def _make_nonce():
@@ -318,7 +344,8 @@ def _check_client_key(hf, stored_key, auth_msg, proof):
     key = h(hf, client_key)
 
     if key != stored_key:
-        raise ScramException("The client keys don't match.")
+        raise ScramException(
+            "The client keys don't match.", SERVER_ERROR_INVALID_PROOF)
 
 
 def _make_gs2_header(channel_binding):
@@ -343,7 +370,13 @@ def _parse_message(msg):
 
 
 def _get_client_first(username, c_nonce, channel_binding):
-    bare = ','.join(('n=' + saslprep(username), 'r=' + c_nonce))
+    try:
+        u = saslprep(username)
+    except ScramException as e:
+        raise ScramException(
+            e.args[0], SERVER_ERROR_INVALID_USERNAME_ENCODING)
+
+    bare = ','.join((f'n={u}', f'r={c_nonce}'))
     gs2_header = _make_gs2_header(channel_binding)
     return bare, gs2_header + bare
 
@@ -360,30 +393,35 @@ def _set_client_first(client_first, s_nonce, channel_binding):
             raise ScramException(
                 "Recieved GS2 flag 'y' which indicates that the client "
                 "doesn't think the server supports channel binding, but in "
-                "fact it does.")
+                "fact it does.",
+                SERVER_ERROR_SERVER_DOES_SUPPORT_CHANNEL_BINDING)
 
     elif gs2_char == 'n':
         if channel_binding is not None:
             raise ScramException(
                 "Received GS2 flag 'n' which indicates that the client "
-                "doesn't required channel binding, but the server does.")
+                "doesn't require channel binding, but the server does.",
+                SERVER_ERROR_SERVER_DOES_SUPPORT_CHANNEL_BINDING)
 
     elif gs2_char == 'p':
         if channel_binding is None:
             raise ScramException(
                 "Received GS2 flag 'p' which indicates that the client "
-                "requires channel binding, but the server does not.")
+                "requires channel binding, but the server does not.",
+                SERVER_ERROR_CHANNEL_BINDING_NOT_SUPPORTED)
 
         channel_type, _ = channel_binding
         cb_name = gs2_cbind_flag.split('=')[-1]
         if cb_name != channel_type:
             raise ScramException(
-                "Received channel binding name {cb_name} but this server "
-                "supports the channel binding name {channel_type}.")
+                f"Received channel binding name {cb_name} but this server "
+                f"supports the channel binding name {channel_type}.",
+                SERVER_ERROR_UNSUPPORTED_CHANNEL_BINDING_TYPE)
 
     else:
         raise ScramException(
-            "Received GS2 flag {gs2_char} which isn't recognized.")
+            f"Received GS2 flag {gs2_char} which isn't recognized.",
+            SERVER_ERROR_OTHER_ERROR)
 
     client_first_bare = client_first[second_comma + 1:]
     msg = _parse_message(client_first_bare)
@@ -396,7 +434,7 @@ def _set_client_first(client_first, s_nonce, channel_binding):
 
 def _get_server_first(
         nonce, salt, iterations, client_first_bare, channel_binding):
-    sfirst = ','.join(('r=' + nonce, 's=' + salt, 'i=' + str(iterations)))
+    sfirst = ','.join((f'r={nonce}', f's={salt}', f'i={iterations}'))
     auth_msg = _make_auth_message(
         nonce, client_first_bare, sfirst, channel_binding)
     return auth_msg, sfirst
@@ -410,7 +448,8 @@ def _set_server_first(
     iterations = int(msg['i'])
 
     if not nonce.startswith(c_nonce):
-        raise ScramException("Client nonce doesn't match.")
+        raise ScramException(
+            "Client nonce doesn't match.", SERVER_ERROR_OTHER_ERROR)
 
     auth_msg = _make_auth_message(
         nonce, client_first_bare, server_first, channel_binding)
@@ -435,6 +474,24 @@ def _get_client_final(
     return b64enc(server_signature), ','.join(msg)
 
 
+SERVER_ERROR_INVALID_ENCODING = 'invalid-encoding'
+SERVER_ERROR_EXTENSIONS_NOT_SUPPORTED = 'extensions-not-supported'
+SERVER_ERROR_INVALID_PROOF = 'invalid-proof'
+SERVER_ERROR_INVALID_ENCODING = 'invalid-encoding'
+SERVER_ERROR_CHANNEL_BINDINGS_DONT_MATCH = 'channel-bindings-dont-match'
+SERVER_ERROR_SERVER_DOES_SUPPORT_CHANNEL_BINDING = \
+    'server-does-support-channel-binding'
+SERVER_ERROR_SERVER_DOES_NOT_SUPPORT_CHANNEL_BINDING = \
+    'server does not support channel binding'
+SERVER_ERROR_CHANNEL_BINDING_NOT_SUPPORTED = 'channel-binding-not-supported'
+SERVER_ERROR_UNSUPPORTED_CHANNEL_BINDING_TYPE = \
+    'unsupported-channel-binding-type'
+SERVER_ERROR_UNKNOWN_USER = 'unknown-user'
+SERVER_ERROR_INVALID_USERNAME_ENCODING = 'invalid-username-encoding'
+SERVER_ERROR_NO_RESOURCES = 'no-resources'
+SERVER_ERROR_OTHER_ERROR = 'other-error'
+
+
 def _set_client_final(
         hf, client_final, s_nonce, stored_key, server_key, auth_msg_str,
         cbind_data):
@@ -445,10 +502,13 @@ def _set_client_final(
     proof = msg['p']
     channel_binding = msg['c']
     if not b64dec(channel_binding) == _make_cbind_input(cbind_data):
-        raise ScramException("The channel bindings don't match.")
+        raise ScramException(
+            "The channel bindings don't match.",
+            SERVER_ERROR_CHANNEL_BINDINGS_DONT_MATCH)
 
     if not nonce.endswith(s_nonce):
-        raise ScramException("Server nonce doesn't match.")
+        raise ScramException(
+            "Server nonce doesn't match.", SERVER_ERROR_OTHER_ERROR)
 
     _check_client_key(hf, stored_key, auth_msg, proof)
 
@@ -456,14 +516,15 @@ def _set_client_final(
     return b64enc(sig)
 
 
-def _get_server_final(server_signature):
-    return 'v=' + server_signature
+def _get_server_final(server_signature, error):
+    return f'v={server_signature}' if error is None else f'e={error}'
 
 
 def _set_server_final(message, server_signature):
     msg = _parse_message(message)
     if server_signature != msg['v']:
-        raise ScramException("The server signature doesn't match.")
+        raise ScramException(
+            "The server signature doesn't match.", SERVER_ERROR_OTHER_ERROR)
 
 
 def saslprep(source):
@@ -490,7 +551,8 @@ def saslprep(source):
     is_ral_char = in_table_d1
     if is_ral_char(data[0]):
         if not is_ral_char(data[-1]):
-            raise ValueError("malformed bidi sequence")
+            raise ScramException(
+                "malformed bidi sequence", SERVER_ERROR_INVALID_ENCODING)
         # forbid L chars within R/AL sequence.
         is_forbidden_bidi_char = in_table_d2
     else:
@@ -517,6 +579,6 @@ def saslprep(source):
                 (in_table_c9, "tagged characters forbidden"),
                 (is_forbidden_bidi_char, "forbidden bidi character")):
             if f(c):
-                raise ValueError(msg)
+                raise ScramException(msg, SERVER_ERROR_INVALID_ENCODING)
 
     return data

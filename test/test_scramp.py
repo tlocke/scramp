@@ -115,6 +115,7 @@ SCRAM_SHA_256_PLUS_EXCHANGE = {
     'channel_binding': ('tls-unique', b'xxx'),
 }
 
+
 params = [
     ('SCRAM-SHA-1', SCRAM_SHA_1_EXCHANGE),
     ('SCRAM-SHA-1-PLUS', SCRAM_SHA_1_PLUS_EXCHANGE),
@@ -202,7 +203,7 @@ def test_set_client_final(mech, x):
 
 @pytest.mark.parametrize("mech,x", params)
 def test_get_server_final(mech, x):
-    assert core._get_server_final(x['server_signature']) == x['sfinal']
+    assert core._get_server_final(x['server_signature'], None) == x['sfinal']
 
 
 @pytest.mark.parametrize("mech,x", params)
@@ -244,3 +245,61 @@ def test_server(mech, x):
     s.set_client_final(x['cfinal'])
 
     assert s.get_server_final() == x['sfinal']
+
+
+def test_check_stage():
+    with pytest.raises(
+            ScramException,
+            match='The next method to be called is get_server_first, not this '
+            'method.'):
+        core._check_stage(
+            core.ServerStage, core.ServerStage.set_client_first,
+            core.ServerStage.get_server_final)
+
+
+def test_set_client_first_error():
+    x = SCRAM_SHA_256_EXCHANGE
+    m = ScramMechanism(mechanism='SCRAM-SHA-256')
+
+    def auth_fn(username):
+        lookup = {
+            USERNAME: m.make_auth_info(
+                PASSWORD, salt=b64dec(x['salt']),
+                iteration_count=x['iterations'])
+        }
+        return lookup[username]
+
+    s = m.make_server(
+        auth_fn, channel_binding=x['channel_binding'], s_nonce=x['s_nonce'])
+
+    with pytest.raises(
+            ScramException,
+            match="Received GS2 flag 'p' which indicates that the client "
+            "requires channel binding, but the server does not."):
+        s.set_client_first('p=tls-unique,,n=user,r=rOprNGfwEbeRWgbNEkqO')
+    assert s.get_server_final() == 'e=channel-binding-not-supported'
+
+
+def test_set_client_final_error():
+    x = SCRAM_SHA_256_EXCHANGE
+    m = ScramMechanism(mechanism='SCRAM-SHA-256')
+
+    def auth_fn(username):
+        lookup = {
+            USERNAME: m.make_auth_info(
+                PASSWORD, salt=b64dec(x['salt']),
+                iteration_count=x['iterations'])
+        }
+        return lookup[username]
+
+    s = m.make_server(
+        auth_fn, channel_binding=x['channel_binding'], s_nonce=x['s_nonce'])
+
+    s.set_client_first(x['cfirst'])
+    s.get_server_first()
+    with pytest.raises(ScramException, match='other-error'):
+        s.set_client_final(
+            'c=biws,r=rOprNGfwEbeRWgbNEkqO_invalid,'
+            'p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ=')
+
+    assert s.get_server_final() == 'e=other-error'

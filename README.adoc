@@ -234,6 +234,51 @@ v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=
 ```
 
 
+=== Server Error
+
+Here's an example of when setting a message from the client causes an error.
+The server nonce and salt is specified in order to give a reproducible example, but in production you'd omit the `s_nonce` and `salt` parameters and let
+Scramp generate them:
+
+```
+>>> from scramp import ScramException, ScramMechanism
+>>>
+>>> USERNAME = 'user'
+>>> PASSWORD = 'pencil'
+>>> S_NONCE = '%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0'
+>>> SALT = b'[m\x99h\x9d\x125\x8e\xec\xa0K\x14\x126\xfa\x81'
+>>>
+>>> db = {}
+>>>
+>>> m = ScramMechanism()
+>>>
+>>> salt, stored_key, server_key, iteration_count = m.make_auth_info(
+...     PASSWORD, salt=SALT)
+>>>
+>>> db[USERNAME] = salt, stored_key, server_key, iteration_count
+>>>
+>>> # Define your own function for getting a password given a username
+>>> def auth_fn(username):
+...     return db[username]
+>>>
+>>> # Normally the s_nonce parameter would be omitted, in which case the
+>>> # server will generate the nonce itself.
+>>>
+>>> s = m.make_server(auth_fn, s_nonce=S_NONCE)
+>>>
+>>> try:
+...     # Set the first message from the client
+...     s.set_client_first('p=tls-unique,,n=user,r=rOprNGfwEbeRWgbNEkqO')
+... except ScramException as e:
+...     print(e)
+...     # Get the final server message and send it to the client
+...     sfinal = s.get_server_final()
+...     print(sfinal)
+Received GS2 flag 'p' which indicates that the client requires channel binding, but the server does not. channel-binding-not-supported
+e=channel-binding-not-supported
+
+```
+
 
 == API Docs
 
@@ -388,6 +433,12 @@ twine upload dist/*
 
 
 == Release Notes
+
+=== Version 1.3.0, 2021-03-28
+
+* As the specification allows, server errors are now sent to the client in the
+  `server_final` message, an exception is still thrown as before.
+
 
 === Version 1.2.2, 2021-02-13
 
