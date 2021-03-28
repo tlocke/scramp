@@ -303,3 +303,11 @@ def test_set_client_final_error():
             'p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ=')
 
     assert s.get_server_final() == 'e=other-error'
+
+
+def test_set_server_first_error():
+    c = ScramClient(['SCRAM-SHA-256'], 'user', 'pencil')
+    c.get_client_first()
+
+    with pytest.raises(ScramException, match='other-error'):
+        c.set_server_first('e=other-error')

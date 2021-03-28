@@ -434,6 +434,11 @@ twine upload dist/*
 
 == Release Notes
 
+=== Version 1.4.0, 2021-03-28
+
+* Raise an exception if the client receives an error from the server.
+
+
 === Version 1.3.0, 2021-03-28
 
 * As the specification allows, server errors are now sent to the client in the

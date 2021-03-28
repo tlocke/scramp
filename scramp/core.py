@@ -443,6 +443,8 @@ def _get_server_first(
 def _set_server_first(
         server_first, c_nonce, client_first_bare, channel_binding):
     msg = _parse_message(server_first)
+    if 'e' in msg:
+        raise ScramException(f"The server returned the error: {msg['e']}")
     nonce = msg['r']
     salt = msg['s']
     iterations = int(msg['i'])
@@ -522,6 +524,9 @@ def _get_server_final(server_signature, error):
 
 def _set_server_final(message, server_signature):
     msg = _parse_message(message)
+    if 'e' in msg:
+        raise ScramException(f"The server returned the error: {msg['e']}")
+
     if server_signature != msg['v']:
         raise ScramException(
             "The server signature doesn't match.", SERVER_ERROR_OTHER_ERROR)
