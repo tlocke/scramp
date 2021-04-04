@@ -37,11 +37,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 flake8-import-order passlib
+          pip install pyflakes black passlib
           python setup.py install
 
       - name: Run checks
         run: |
+          black --check .
           python -m doctest README.adoc
-          flake8 scramp test
           python setup.py check

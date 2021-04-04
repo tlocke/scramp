@@ -24,8 +24,8 @@ setup(
     long_description=long_description,
     url="https://github.com/tlocke/scramp",
     license="MIT",
-    python_requires='>=3.6',
-    install_requires=['asn1crypto==1.4.0'],
+    python_requires=">=3.6",
+    install_requires=["asn1crypto==1.4.0"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -43,5 +43,5 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     keywords="SCRAM authentication SASL",
-    packages=("scramp",)
+    packages=("scramp",),
 )

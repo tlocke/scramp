@@ -11,7 +11,7 @@ def h(hf, msg):
 
 
 def hi(hf, password, salt, iterations):
-    u = ui = hmac(hf, password, salt + b'\x00\x00\x00\x01')
+    u = ui = hmac(hf, password, salt + b"\x00\x00\x00\x01")
     for i in range(iterations - 1):
         ui = hmac(hf, password, ui)
         u = xor(u, ui)
@@ -23,7 +23,7 @@ def xor(bytes1, bytes2):
 
 
 def b64enc(binary):
-    return b64encode(binary).decode('utf8')
+    return b64encode(binary).decode("utf8")
 
 
 def b64dec(string):
@@ -31,4 +31,4 @@ def b64dec(string):
 
 
 def uenc(string):
-    return string.encode('utf-8')
+    return string.encode("utf-8")
