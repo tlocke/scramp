@@ -434,6 +434,12 @@ twine upload dist/*
 
 == Release Notes
 
+=== Version 1.4.1, 2021-08-25
+
+* When using `make_channel_binding()` to create a tls-server-end-point channel binding,
+  support certificates with hash algorithm of sha512.
+
+
 === Version 1.4.0, 2021-03-28
 
 * Raise an exception if the client receives an error from the server.
