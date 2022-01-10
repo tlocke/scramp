@@ -2,10 +2,9 @@
 :toc: preamble
 :toclevels: 2
 
-A Python implementation of the SCRAM authentication protocol defined by
-https://tools.ietf.org/html/rfc5802[RFC 5802] and
-https://www.rfc-editor.org/rfc/rfc7677.txt[RFC 7677]. Scramp supports the
-following mechanisms:
+A Python implementation of the
+https://en.wikipedia.org/wiki/Salted_Challenge_Response_Authentication_Mechanism[SCRAM
+authentication protocol]. Scramp supports the following mechanisms:
 
 * SCRAM-SHA-1
 * SCRAM-SHA-1-PLUS
@@ -280,6 +279,23 @@ e=channel-binding-not-supported
 ```
 
 
+== Standards
+
+https://tools.ietf.org/html/rfc5802[RFC 5802]::
+  Describes SCRAM.
+https://datatracker.ietf.org/doc/html/rfc7677[RFC 7677]::
+  Registers SCRAM-SHA-256 and SCRAM-SHA-256-PLUS.
+https://datatracker.ietf.org/doc/html/draft-melnikov-scram-sha-512[draft-melnikov-scram-sha-512-02]::
+  Registers SCRAM-SHA-512 and SCRAM-SHA-512-PLUS.
+https://datatracker.ietf.org/doc/html/draft-melnikov-scram-sha3-512[draft-melnikov-scram-sha3-512]::
+  Registers SCRAM-SHA3-512 and SCRAM-SHA3-512-PLUS.
+https://datatracker.ietf.org/doc/html/rfc5929[RFC 5929]::
+  Channel Bindings for TLS.
+https://datatracker.ietf.org/doc/html/draft-ietf-kitten-tls-channel-bindings-for-tls13[draft-ietf-kitten-tls-channel-bindings-for-tls13]::
+  Defines the `tls-exporter` channel binding, which is
+  https://github.com/tlocke/scramp/issues/9[not yet supported by Scramp].
+
+
 == API Docs
 
 
@@ -290,8 +306,7 @@ A tuple of the supported mechanism names.
 
 === scramp.ScramClient
 
-`ScramClient(mechanisms, username, password, channel_binding=None,
-c_nonce=None)`::
+`ScramClient(mechanisms, username, password, channel_binding=None, c_nonce=None)`::
   Constructor of the `ScramClient` class, with the following parameters:
   `mechanisms`:::
     A list or tuple of mechanism names. ScramClient will choose the most
@@ -308,6 +323,10 @@ c_nonce=None)`::
     'tls-unique', the `channel_binding` parameter would be
     `('tls-unique', data)`, where `data` is obtained by calling
     https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.get_channel_binding[SSLSocket.get_channel_binding()].
+    The convenience function
+    <<make_channel_binding, `scramp.make_channel_binding()`>> can be used to
+    create a channel binding tuple.
+
   `c_nonce`:::
     The client nonce. It's sometimes useful to set this when testing /
     debugging, but in production this should be omitted, in which case
@@ -368,6 +387,9 @@ The `ScramMechanism` object has the following methods and properties:
     'tls-unique', the `channel_binding` parameter would be
     `('tls-unique', data)`, where `data` is obtained by calling
     https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.get_channel_binding[SSLSocket.get_channel_binding()].
+    The convenience function
+    <<make_channel_binding, `scramp.make_channel_binding()`>> can be used to
+    create a channel binding tuple.
   `s_nonce`:::
     The server nonce as a `str`. It's sometimes useful to set this when testing
     / debugging, but in production this should be omitted, in which case
@@ -400,16 +422,18 @@ The `ScramServer` object has the following methods:
   Get the server final message.
 
 
+[#make_channel_binding]
 === scramp.make_channel_binding()
 
-A helper function that makes a `channel_binding` tuple when given a channel
-binding name and an SSL socket. The parameters are:
+`make_channel_binding(name, ssl_socket)`::
+  A helper function that makes a `channel_binding` tuple when given a channel binding
+  name and an SSL socket. The parameters are:
 
   `name`:::
     A channel binding name such as 'tls-unique' or 'tls-server-end-point'.
   `ssl_socket`:::
-    An instance of an
-    https://docs.python.org/3/library/ssl.html#ssl.SSLSocket[ssl socket].
+    An instance of
+    https://docs.python.org/3/library/ssl.html#ssl.SSLSocket[ssl.SSLSocket].
 
 
 == Testing

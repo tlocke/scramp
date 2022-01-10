@@ -87,9 +87,9 @@ CHANNEL_TYPES = (
 )
 
 
-def make_channel_binding(name, ssl_socket):
+def _make_cb_data(name, ssl_socket):
     if name == "tls-unique":
-        return (name, ssl_socket.get_channel_binding(name))
+        return ssl_socket.get_channel_binding(name)
 
     elif name == "tls-server-end-point":
         cert_bin = ssl_socket.getpeercert(binary_form=True)
@@ -107,10 +107,14 @@ def make_channel_binding(name, ssl_socket):
             raise ScramException(
                 f"Hash algorithm {hash_algo} not supported by hashlib. {e}"
             )
-        return "tls-server-end-point", hash_obj.digest()
+        return hash_obj.digest()
 
     else:
         raise ScramException(f"Channel binding name {name} not recognized.")
+
+
+def make_channel_binding(name, ssl_socket):
+    return name, _make_cb_data(name, ssl_socket)
 
 
 class ScramMechanism:
