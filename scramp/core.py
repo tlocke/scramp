@@ -411,7 +411,7 @@ def _make_cbind_input(channel_binding):
 
 
 def _parse_message(msg):
-    return dict((e[0], e[2:]) for e in msg.split(",") if len(e) > 1)
+    return {e[0]: e[2:] for e in msg.split(",") if len(e) > 1}
 
 
 def _get_client_first(username, c_nonce, channel_binding):
