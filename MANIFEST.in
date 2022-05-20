@@ -1,3 +1,0 @@
-include versioneer.py
-include scramp/_version.py
-include LICENSE README.adoc

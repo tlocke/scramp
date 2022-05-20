@@ -7,7 +7,9 @@ from scramp.core import (
 
 __all__ = [ScramClient, ScramMechanism, ScramException, make_channel_binding]
 
-from ._version import get_versions
+try:
+    from importlib.metadata import version
+except ImportError:
+    from importlib_metadata import version
 
-__version__ = get_versions()["version"]
-del get_versions
+__version__ = version("scramp")

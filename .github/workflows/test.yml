@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+        python-version: ["3.7", "3.8", "3.9", "3.10"]
 
     container: python:${{ matrix.python-version }}
 
@@ -17,12 +17,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-mock
-          python setup.py install
+          pip install pytest pytest-mock .
 
       - name: Run pytest tests
         run: |
-          python -m pytest -x -v test 
+          python -m pytest -x -v -W error test --ignore=test/test_readme.py
 
   checks:
 
@@ -37,11 +36,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyflakes black passlib
-          python setup.py install
+          pip install flake8 flake8-alphabetize pytest black passlib .
 
       - name: Run checks
         run: |
           black --check .
-          python -m doctest README.adoc
-          python setup.py check
+          flake8 .
+          python -m pytest -x -v -W error test/test_readme.py
