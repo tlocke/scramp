@@ -358,3 +358,11 @@ def test_make_channel_binding_tls_server_end_point(mocker):
         b"\re?s\x10\xf2\xf8\xa6+\x91i\x9d\x84,iO\x8emDu\xb4\x19\x06i\xa7\x1a\xf1i\xc6"
         b"K\x81\xcbp\xd1\xaf\xd7",
     )
+
+
+def test_ScramClient_init():
+    mechanisms = ["SCRAM-SHA-256"]
+    username = "ajahn"
+    password = "eightfold"
+    channel_binding = ("tls-server-end-point", b"cafe")
+    ScramClient(mechanisms, username, password, channel_binding=channel_binding)

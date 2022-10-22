@@ -206,38 +206,26 @@ class ScramClient:
     ):
         if not isinstance(mechanisms, (list, tuple)):
             raise ScramException(
-                "The 'mechanisms' parameter must be a list or tuple of "
-                "mechanism names."
+                "The 'mechanisms' parameter must be a list or tuple of mechanism names."
             )
 
         _validate_channel_binding(channel_binding)
 
-        mechs = [ScramMechanism(m) for m in mechanisms]
+        ms = (ScramMechanism(m) for m in mechanisms)
         mechs = [
             m
-            for m in mechs
+            for m in ms
             if channel_binding is not None
             or (channel_binding is None and not m.use_binding)
         ]
         if len(mechs) == 0:
-            raise Exception("There are no suitable mechanisms in the list.")
+            raise ScramException(
+                f"There are no suitable mechanisms in the list provided: {mechanisms}"
+            )
 
         mech = sorted(mechs, key=attrgetter("strength"))[-1]
         self.hf, self.use_binding = mech.hf, mech.use_binding
         self.mechanism_name = mech.name
-
-        if self.use_binding:
-            if channel_binding is None:
-                raise ScramException(
-                    "The channel_binding parameter can't be None if channel "
-                    "binding is required."
-                )
-        else:
-            if channel_binding is not None:
-                raise ScramException(
-                    "The channel_binding parameter must be None if channel "
-                    "binding is not required."
-                )
 
         self.c_nonce = _make_nonce() if c_nonce is None else c_nonce
         self.username = username
