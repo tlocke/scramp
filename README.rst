@@ -473,7 +473,7 @@ Doing A Release Of Scramp
 Run ``tox`` to make sure all tests pass, then update the release notes, then do::
 
   git tag -a x.y.z -m "version x.y.z"
-  rm -r build; rm -r dist
+  rm -r dist
   python -m build
   twine upload --sign dist/*
 
