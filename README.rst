@@ -481,6 +481,16 @@ Run ``tox`` to make sure all tests pass, then update the release notes, then do:
 Release Notes
 -------------
 
+Version 1.4.2, 2022-10-22
+`````````````````````````
+
+- Switch to using the MIT-0 licence https://choosealicense.com/licenses/mit-0/
+
+- When creating a ScramClient, allow non ``-PLUS`` variants, even if a
+  ``channel_binding`` parameter is provided. Previously this would raise and
+  exception.
+
+
 Version 1.4.1, 2021-08-25
 `````````````````````````
 
