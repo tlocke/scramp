@@ -414,11 +414,23 @@ def _get_client_first(username, c_nonce, channel_binding):
 
 
 def _set_client_first(client_first, s_nonce, channel_binding):
-    first_comma = client_first.index(",")
-    second_comma = client_first.index(",", first_comma + 1)
+    try:
+        first_comma = client_first.index(",")
+        second_comma = client_first.index(",", first_comma + 1)
+    except ValueError:
+        raise ScramException(
+            "The client sent a malformed first message.",
+            SERVER_ERROR_OTHER_ERROR,
+        )
     gs2_header = client_first[:second_comma].split(",")
-    gs2_cbind_flag = gs2_header[0]
-    gs2_char = gs2_cbind_flag[0]
+    try:
+        gs2_cbind_flag = gs2_header[0]
+        gs2_char = gs2_cbind_flag[0]
+    except IndexError:
+        raise ScramException(
+            "The client sent malformed gs2 data.",
+            SERVER_ERROR_OTHER_ERROR,
+        )
 
     if gs2_char == "y":
         if channel_binding is not None:
@@ -462,6 +474,14 @@ def _set_client_first(client_first, s_nonce, channel_binding):
 
     client_first_bare = client_first[second_comma + 1 :]
     msg = _parse_message(client_first_bare)
+
+    missing = [letter for letter in "rn" if letter not in msg]
+    if missing:
+        raise ScramException(
+            "The server returned a message without expected parameters. Missing: "
+            f"{', '.join(missing)}."
+        )
+
     c_nonce = msg["r"]
     nonce = c_nonce + s_nonce
     user = msg["n"]
@@ -479,6 +499,14 @@ def _set_server_first(server_first, c_nonce, client_first_bare, channel_binding)
     msg = _parse_message(server_first)
     if "e" in msg:
         raise ScramException(f"The server returned the error: {msg['e']}")
+
+    missing = [letter for letter in "rsi" if letter not in msg]
+    if missing:
+        raise ScramException(
+            "The server returned a message without expected parameters. Missing: "
+            f"{', '.join(missing)}."
+        )
+
     nonce = msg["r"]
     salt = msg["s"]
     iterations = int(msg["i"])
@@ -532,6 +560,17 @@ def _set_client_final(
     auth_msg = uenc(auth_msg_str)
 
     msg = _parse_message(client_final)
+
+    missing = [letter for letter in "rpc" if letter not in msg]
+    if missing:
+        raise ScramException(
+            (
+                "The client sent a message without expected parameters. "
+                f"Missing: {', '.join(missing)}."
+            ),
+            SERVER_ERROR_OTHER_ERROR,
+        )
+
     nonce = msg["r"]
     proof = msg["p"]
     channel_binding = msg["c"]
@@ -558,6 +597,10 @@ def _set_server_final(message, server_signature):
     msg = _parse_message(message)
     if "e" in msg:
         raise ScramException(f"The server returned the error: {msg['e']}")
+    if "v" not in msg:
+        raise ScramException(
+            f"The server returned a final message without the 'v' parameter."
+        )
 
     if server_signature != msg["v"]:
         raise ScramException(

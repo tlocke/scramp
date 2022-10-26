@@ -345,6 +345,78 @@ def test_set_server_first_error():
         c.set_server_first("e=other-error")
 
 
+def test_set_server_first_missing_param():
+    c = ScramClient(["SCRAM-SHA-256"], "user", "pencil")
+    c.get_client_first()
+    with pytest.raises(
+        ScramException,
+        match="The server returned a message without expected parameters. Missing: r, s, i.",
+    ):
+        c.set_server_first("junk")
+
+
+def test_set_server_final_missing_param():
+    x = SCRAM_SHA_256_EXCHANGE
+    c = ScramClient(
+        ["SCRAM-SHA-256"],
+        USERNAME,
+        PASSWORD,
+        c_nonce=x["c_nonce"],
+    )
+    c.get_client_first()
+    c.set_server_first(x["sfirst"])
+    c.get_client_final()
+    with pytest.raises(
+        ScramException,
+        match="The server returned a final message without the 'v' parameter.",
+    ):
+        c.set_server_final("junk")
+
+
+def test_set_client_first_nonsense():
+    m = ScramMechanism(mechanism="SCRAM-SHA-256")
+    s = m.make_server(lambda x: None)
+    with pytest.raises(
+        ScramException, match="The client sent a malformed first message."
+    ):
+        s.set_client_first("junk")
+
+
+def test_set_client_first_missing_param():
+    m = ScramMechanism(mechanism="SCRAM-SHA-256")
+    s = m.make_server(lambda x: None)
+    with pytest.raises(
+        ScramException,
+        match="The server returned a message without expected parameters. Missing: r, n.",
+    ):
+        s.set_client_first("n,morejunk,bonusjunk")
+
+
+def test_set_client_final_missing_param():
+    x = SCRAM_SHA_256_EXCHANGE
+    m = ScramMechanism(mechanism="SCRAM-SHA-256")
+
+    def auth_fn(username):
+        lookup = {
+            USERNAME: m.make_auth_info(
+                PASSWORD, salt=b64dec(x["salt"]), iteration_count=x["iterations"]
+            )
+        }
+        return lookup[username]
+
+    s = m.make_server(
+        auth_fn, channel_binding=x["channel_binding"], s_nonce=x["s_nonce"]
+    )
+
+    s.set_client_first(x["cfirst"])
+    s.get_server_first()
+    with pytest.raises(
+        ScramException,
+        match="The client sent a message without expected parameters. Missing: r, p, c.",
+    ):
+        s.set_client_final("junk")
+
+
 def test_make_channel_binding_tls_server_end_point(mocker):
     ssl_socket = mocker.Mock()
     ssl_socket.getpeercert = mocker.Mock(return_value=b"cafe")
