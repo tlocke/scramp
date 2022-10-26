@@ -484,6 +484,13 @@ Run ``tox`` to make sure all tests pass, then update the release notes, then do:
 Release Notes
 -------------
 
+Version 1.4.3, 2022-10-26
+`````````````````````````
+
+- The client now sends a gs2-cbind-flag of 'y' if the client supports channel
+  binding, but thinks the server does not.
+
+
 Version 1.4.2, 2022-10-22
 `````````````````````````
 
