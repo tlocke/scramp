@@ -181,22 +181,21 @@ def _validate_channel_binding(channel_binding):
 
     if len(channel_binding) != 2:
         raise ScramException(
-            "The channel_binding parameter must either be None or a tuple of "
-            "two elements (type, data)."
+            "The channel_binding parameter must either be None or a tuple of two "
+            "elements (type, data)."
         )
 
     channel_type, channel_data = channel_binding
     if channel_type not in CHANNEL_TYPES:
         raise ScramException(
-            "The channel_binding parameter must either be None or a tuple "
-            "with the first element a str specifying one of the channel "
-            "types {CHANNEL_TYPES}."
+            "The channel_binding parameter must either be None or a tuple with the "
+            "first element a str specifying one of the channel types {CHANNEL_TYPES}."
         )
 
     if not isinstance(channel_data, bytes):
         raise ScramException(
-            "The channel_binding parameter must either be None or a tuple "
-            "with the second element a bytes object containing the bind data."
+            "The channel_binding parameter must either be None or a tuple with the "
+            "second element a bytes object containing the bind data."
         )
 
 
@@ -212,12 +211,7 @@ class ScramClient:
         _validate_channel_binding(channel_binding)
 
         ms = (ScramMechanism(m) for m in mechanisms)
-        mechs = [
-            m
-            for m in ms
-            if channel_binding is not None
-            or (channel_binding is None and not m.use_binding)
-        ]
+        mechs = [m for m in ms if not (channel_binding is None and m.use_binding)]
         if len(mechs) == 0:
             raise ScramException(
                 f"There are no suitable mechanisms in the list provided: {mechanisms}"
@@ -240,15 +234,15 @@ class ScramClient:
     def get_client_first(self):
         self._set_stage(ClientStage.get_client_first)
         self.client_first_bare, client_first = _get_client_first(
-            self.username, self.c_nonce, self.channel_binding
+            self.username, self.c_nonce, self.channel_binding, self.use_binding
         )
         return client_first
 
     def set_server_first(self, message):
         self._set_stage(ClientStage.set_server_first)
         self.server_first = message
-        self.auth_message, self.nonce, self.salt, self.iterations = _set_server_first(
-            message, self.c_nonce, self.client_first_bare, self.channel_binding
+        self.nonce, self.salt, self.iterations = _set_server_first(
+            message, self.c_nonce
         )
 
     def get_client_final(self):
@@ -259,8 +253,10 @@ class ScramClient:
             self.salt,
             self.iterations,
             self.nonce,
-            self.auth_message,
+            self.client_first_bare,
+            self.server_first,
             self.channel_binding,
+            self.use_binding,
         )
         return cfinal
 
@@ -285,30 +281,25 @@ def set_error(f):
 
 class ScramServer:
     def __init__(self, mechanism, auth_fn, channel_binding=None, s_nonce=None):
-        self.m = mechanism
 
         _validate_channel_binding(channel_binding)
 
-        if mechanism.use_binding:
-            if channel_binding is None:
-                raise ScramException(
-                    "The mechanism requires channel binding, and so "
-                    "channel_binding can't be None."
-                )
-        else:
-            if channel_binding is not None:
-                raise ScramException(
-                    "The mechanism does not support channel binding, and so "
-                    "channel_binding must be None."
-                )
-
         self.channel_binding = channel_binding
-
         self.s_nonce = _make_nonce() if s_nonce is None else s_nonce
         self.auth_fn = auth_fn
         self.stage = None
         self.server_signature = None
         self.error = None
+
+        self._set_mechanism(mechanism)
+
+    def _set_mechanism(self, mechanism):
+        if mechanism.use_binding and self.channel_binding is None:
+            raise ScramException(
+                "The mechanism requires channel binding, and so channel_binding can't "
+                "be None."
+            )
+        self.m = mechanism
 
     def _set_stage(self, next_stage):
         _check_stage(ServerStage, self.stage, next_stage)
@@ -317,19 +308,31 @@ class ScramServer:
     @set_error
     def set_client_first(self, client_first):
         self._set_stage(ServerStage.set_client_first)
-        self.nonce, self.user, self.client_first_bare = _set_client_first(
-            client_first, self.s_nonce, self.channel_binding
+        (
+            self.nonce,
+            self.user,
+            self.client_first_bare,
+            upgrade_mechanism,
+        ) = _set_client_first(
+            client_first, self.s_nonce, self.channel_binding, self.m.use_binding
         )
+
+        if upgrade_mechanism:
+            mech = ScramMechanism(f"{self.m.name}-PLUS")
+            self._set_mechanism(mech)
+
         salt, self.stored_key, self.server_key, self.i = self.auth_fn(self.user)
         self.salt = b64enc(salt)
 
     @set_error
     def get_server_first(self):
         self._set_stage(ServerStage.get_server_first)
-        self.auth_message, server_first = _get_server_first(
-            self.nonce, self.salt, self.i, self.client_first_bare, self.channel_binding
+        self.server_first = _get_server_first(
+            self.nonce,
+            self.salt,
+            self.i,
         )
-        return server_first
+        return self.server_first
 
     @set_error
     def set_client_final(self, client_final):
@@ -340,8 +343,10 @@ class ScramServer:
             self.s_nonce,
             self.stored_key,
             self.server_key,
-            self.auth_message,
+            self.client_first_bare,
+            self.server_first,
             self.channel_binding,
+            self.m.use_binding,
         )
 
     @set_error
@@ -354,10 +359,9 @@ def _make_nonce():
     return str(uuid4()).replace("-", "")
 
 
-def _make_auth_message(nonce, client_first_bare, server_first, cbind_data):
-    cbind_input = b64enc(_make_cbind_input(cbind_data))
-    msg = client_first_bare, server_first, "c=" + cbind_input, "r=" + nonce
-    return ",".join(msg)
+def _make_auth_message(client_first_bare, server_first, client_final_without_proof):
+    msg = client_first_bare, server_first, client_final_without_proof
+    return uenc(",".join(msg))
 
 
 def _make_salted_password(hf, password, salt, iterations):
@@ -381,76 +385,85 @@ def _check_client_key(hf, stored_key, auth_msg, proof):
         raise ScramException("The client keys don't match.", SERVER_ERROR_INVALID_PROOF)
 
 
-def _make_gs2_header(channel_binding):
+def _make_gs2_header(channel_binding, use_binding):
     if channel_binding is None:
-        return "n,,"
+        return "n", "n,,"
     else:
-        channel_type, _ = channel_binding
-        return f"p={channel_type},,"
+        if use_binding:
+            channel_type, _ = channel_binding
+            return "p", f"p={channel_type},,"
+        else:
+            return "y", "y,,"
 
 
-def _make_cbind_input(channel_binding):
-    gs2_header = _make_gs2_header(channel_binding).encode("ascii")
-    if channel_binding is None:
-        return gs2_header
-    else:
+def _make_cbind_input(channel_binding, use_binding):
+    gs2_cbind_flag, gs2_header = _make_gs2_header(channel_binding, use_binding)
+    gs2_header_bin = gs2_header.encode("ascii")
+
+    if gs2_cbind_flag in ("y", "n"):
+        return gs2_header_bin
+    elif gs2_cbind_flag == "p":
         _, cbind_data = channel_binding
-        return gs2_header + cbind_data
+        return gs2_header_bin + cbind_data
+    else:
+        raise ScramException(f"The gs2_cbind_flag '{gs2_cbind_flag}' is not recognized")
 
 
 def _parse_message(msg):
     return {e[0]: e[2:] for e in msg.split(",") if len(e) > 1}
 
 
-def _get_client_first(username, c_nonce, channel_binding):
+def _get_client_first(username, c_nonce, channel_binding, use_binding):
     try:
         u = saslprep(username)
     except ScramException as e:
         raise ScramException(e.args[0], SERVER_ERROR_INVALID_USERNAME_ENCODING)
 
     bare = ",".join((f"n={u}", f"r={c_nonce}"))
-    gs2_header = _make_gs2_header(channel_binding)
+    _, gs2_header = _make_gs2_header(channel_binding, use_binding)
     return bare, gs2_header + bare
 
 
-def _set_client_first(client_first, s_nonce, channel_binding):
+def _set_client_first(client_first, s_nonce, channel_binding, use_binding):
     first_comma = client_first.index(",")
     second_comma = client_first.index(",", first_comma + 1)
     gs2_header = client_first[:second_comma].split(",")
     gs2_cbind_flag = gs2_header[0]
     gs2_char = gs2_cbind_flag[0]
+    upgrade_mechanism = False
 
     if gs2_char == "y":
         if channel_binding is not None:
             raise ScramException(
-                "Recieved GS2 flag 'y' which indicates that the client "
-                "doesn't think the server supports channel binding, but in "
-                "fact it does.",
+                "Recieved GS2 flag 'y' which indicates that the client doesn't think "
+                "the server supports channel binding, but in fact it does.",
                 SERVER_ERROR_SERVER_DOES_SUPPORT_CHANNEL_BINDING,
             )
 
     elif gs2_char == "n":
-        if channel_binding is not None:
+        if use_binding:
             raise ScramException(
-                "Received GS2 flag 'n' which indicates that the client "
-                "doesn't require channel binding, but the server does.",
+                "Received GS2 flag 'n' which indicates that the client doesn't require "
+                "channel binding, but the server does.",
                 SERVER_ERROR_SERVER_DOES_SUPPORT_CHANNEL_BINDING,
             )
 
     elif gs2_char == "p":
         if channel_binding is None:
             raise ScramException(
-                "Received GS2 flag 'p' which indicates that the client "
-                "requires channel binding, but the server does not.",
+                "Received GS2 flag 'p' which indicates that the client requires "
+                "channel binding, but the server does not.",
                 SERVER_ERROR_CHANNEL_BINDING_NOT_SUPPORTED,
             )
+        if not use_binding:
+            upgrade_mechanism = True
 
         channel_type, _ = channel_binding
         cb_name = gs2_cbind_flag.split("=")[-1]
         if cb_name != channel_type:
             raise ScramException(
-                f"Received channel binding name {cb_name} but this server "
-                f"supports the channel binding name {channel_type}.",
+                f"Received channel binding name {cb_name} but this server supports the "
+                f"channel binding name {channel_type}.",
                 SERVER_ERROR_UNSUPPORTED_CHANNEL_BINDING_TYPE,
             )
 
@@ -466,16 +479,14 @@ def _set_client_first(client_first, s_nonce, channel_binding):
     nonce = c_nonce + s_nonce
     user = msg["n"]
 
-    return nonce, user, client_first_bare
+    return nonce, user, client_first_bare, upgrade_mechanism
 
 
-def _get_server_first(nonce, salt, iterations, client_first_bare, channel_binding):
-    sfirst = ",".join((f"r={nonce}", f"s={salt}", f"i={iterations}"))
-    auth_msg = _make_auth_message(nonce, client_first_bare, sfirst, channel_binding)
-    return auth_msg, sfirst
+def _get_server_first(nonce, salt, iterations):
+    return ",".join((f"r={nonce}", f"s={salt}", f"i={iterations}"))
 
 
-def _set_server_first(server_first, c_nonce, client_first_bare, channel_binding):
+def _set_server_first(server_first, c_nonce):
     msg = _parse_message(server_first)
     if "e" in msg:
         raise ScramException(f"The server returned the error: {msg['e']}")
@@ -486,27 +497,35 @@ def _set_server_first(server_first, c_nonce, client_first_bare, channel_binding)
     if not nonce.startswith(c_nonce):
         raise ScramException("Client nonce doesn't match.", SERVER_ERROR_OTHER_ERROR)
 
-    auth_msg = _make_auth_message(
-        nonce, client_first_bare, server_first, channel_binding
-    )
-    return auth_msg, nonce, salt, iterations
+    return nonce, salt, iterations
 
 
 def _get_client_final(
-    hf, password, salt_str, iterations, nonce, auth_msg_str, cbind_data
+    hf,
+    password,
+    salt_str,
+    iterations,
+    nonce,
+    client_first_bare,
+    server_first,
+    channel_binding,
+    use_binding,
 ):
     salt = b64dec(salt_str)
     salted_password = _make_salted_password(hf, password, salt, iterations)
     client_key, stored_key, server_key = _c_key_stored_key_s_key(hf, salted_password)
 
-    auth_msg = uenc(auth_msg_str)
+    cbind_input = _make_cbind_input(channel_binding, use_binding)
+    client_final_without_proof = f"c={b64enc(cbind_input)},r={nonce}"
+    auth_msg = _make_auth_message(
+        client_first_bare, server_first, client_final_without_proof
+    )
 
     client_signature = hmac(hf, stored_key, auth_msg)
     client_proof = xor(client_key, client_signature)
     server_signature = hmac(hf, server_key, auth_msg)
-    cbind_input = _make_cbind_input(cbind_data)
-    msg = ["c=" + b64enc(cbind_input), "r=" + nonce, "p=" + b64enc(client_proof)]
-    return b64enc(server_signature), ",".join(msg)
+    client_final = f"{client_final_without_proof},p={b64enc(client_proof)}"
+    return b64enc(server_signature), client_final
 
 
 SERVER_ERROR_INVALID_ENCODING = "invalid-encoding"
@@ -527,15 +546,24 @@ SERVER_ERROR_OTHER_ERROR = "other-error"
 
 
 def _set_client_final(
-    hf, client_final, s_nonce, stored_key, server_key, auth_msg_str, cbind_data
+    hf,
+    client_final,
+    s_nonce,
+    stored_key,
+    server_key,
+    client_first_bare,
+    server_first,
+    channel_binding,
+    use_binding,
 ):
-    auth_msg = uenc(auth_msg_str)
 
     msg = _parse_message(client_final)
+    chan_binding = msg["c"]
     nonce = msg["r"]
     proof = msg["p"]
-    channel_binding = msg["c"]
-    if not b64dec(channel_binding) == _make_cbind_input(cbind_data):
+    if use_binding and b64dec(chan_binding) != _make_cbind_input(
+        channel_binding, use_binding
+    ):
         raise ScramException(
             "The channel bindings don't match.",
             SERVER_ERROR_CHANNEL_BINDINGS_DONT_MATCH,
@@ -544,6 +572,10 @@ def _set_client_final(
     if not nonce.endswith(s_nonce):
         raise ScramException("Server nonce doesn't match.", SERVER_ERROR_OTHER_ERROR)
 
+    client_final_without_proof = f"c={chan_binding},r={nonce}"
+    auth_msg = _make_auth_message(
+        client_first_bare, server_first, client_final_without_proof
+    )
     _check_client_key(hf, stored_key, auth_msg, proof)
 
     sig = hmac(hf, server_key, auth_msg)

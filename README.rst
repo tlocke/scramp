@@ -388,14 +388,17 @@ The ``ScramMechanism`` object has the following methods and properties:
 
   ``channel_binding``
     Providing a value for this parameter allows channel binding to be used (ie.  it lets
-    you use mechanisms ending in '-PLUS'). The value for ``channel_binding`` is a tuple
-    consisting of the channel binding name and the channel binding data. For example, if
-    the channel binding name is 'tls-unique', the ``channel_binding`` parameter would be
-    ``('tls-unique', data)``, where ``data`` is obtained by calling
+    you use mechanisms ending in ``-PLUS``). The value for ``channel_binding`` is a
+    tuple consisting of the channel binding name and the channel binding data. For
+    example, if the channel binding name is 'tls-unique', the ``channel_binding``
+    parameter would be ``('tls-unique', data)``, where ``data`` is obtained by calling
     `SSLSocket.get_channel_binding()
     <https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.get_channel_binding>`_.
     The convenience function ``scramp.make_channel_binding()`` can be used to create a
-    channel binding tuple.
+    channel binding tuple. If ``channel_binding`` is provided and the mechanism isn't a
+    ``-PLUS`` variant, then the server will negotiate with the client to use the
+    ``-PLUS`` variant if the client supports it, or otherwise to use the mechanism
+    without channel binding.
 
   ``s_nonce``
     The server nonce as a ``str``. It's sometimes useful to set this when testing /
