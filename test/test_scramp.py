@@ -9,13 +9,47 @@ from scramp import (
     core,
     make_channel_binding,
 )
+from scramp.core import _parse_message
 from scramp.utils import b64dec
 
-USERNAME = "user"
-PASSWORD = "pencil"
+
+@pytest.mark.parametrize(
+    "msg,validations,error_msg",
+    [
+        [
+            "",
+            ["abc"],
+            "Malformed trial message. Attributes must be separated by a ',' and each "
+            "attribute must start with a letter followed by a '=': other-error",
+        ],
+        [
+            "c=jk,d=kln",
+            ["abc"],
+            "Malformed trial message. Expected the attribute list to be 'abc' but "
+            "found 'cd': other-error",
+        ],
+    ],
+)
+def test_parse_message_fail(msg, validations, error_msg):
+    with pytest.raises(ScramException, match=error_msg):
+        _parse_message(msg, "trial", *validations)
+
+
+@pytest.mark.parametrize(
+    "msg,validations,result",
+    [
+        ["c=jk,d=kln", ["cd"], {"c": "jk", "d": "kln"}],
+        ["c=jk,d=kln", ["abc", "cd"], {"c": "jk", "d": "kln"}],
+        ["c=", ["c"], {"c": ""}],
+    ],
+)
+def test_parse_message_succeed(msg, validations, result):
+    assert _parse_message(msg, "trial", *validations) == result
 
 
 EXCHANGE_SCRAM_SHA_256 = {
+    "username": "user",
+    "password": "pencil",
     "c_mechanisms": ["SCRAM-SHA-256"],
     "s_mechanism": "SCRAM-SHA-256",
     "cfirst": "n,,n=user,r=rOprNGfwEbeRWgbNEkqO",
@@ -48,6 +82,8 @@ EXCHANGE_SCRAM_SHA_256 = {
 }
 
 EXCHANGE_SCRAM_SHA_256_PLUS = {
+    "username": "user",
+    "password": "pencil",
     "c_mechanisms": ["SCRAM-SHA-256-PLUS"],
     "s_mechanism": "SCRAM-SHA-256-PLUS",
     "cfirst": "p=tls-unique,,n=user,r=rOprNGfwEbeRWgbNEkqO",
@@ -84,6 +120,8 @@ EXCHANGE_SCRAM_SHA_256_PLUS = {
 params = [
     # Standard SCRAM_SHA_1
     {
+        "username": "user",
+        "password": "pencil",
         "c_mechanisms": ["SCRAM-SHA-1"],
         "s_mechanism": "SCRAM-SHA-1",
         "cfirst": "n,,n=user,r=fyko+d2lbbFgONRv9qkxdawL",
@@ -115,6 +153,8 @@ params = [
     },
     # SCRAM_SHA_1 where the client supports channel binding but the server does not
     {
+        "username": "user",
+        "password": "pencil",
         "c_mechanisms": ["SCRAM-SHA-1"],
         "s_mechanism": "SCRAM-SHA-1",
         "cfirst": "y,,n=user,r=fyko+d2lbbFgONRv9qkxdawL",
@@ -146,6 +186,8 @@ params = [
     },
     # Standard SCRAM_SHA_1_PLUS
     {
+        "username": "user",
+        "password": "pencil",
         "c_mechanisms": ["SCRAM-SHA-1-PLUS"],
         "s_mechanism": "SCRAM-SHA-1-PLUS",
         "cfirst": "p=tls-unique,,n=user,r=fyko+d2lbbFgONRv9qkxdawL",
@@ -185,7 +227,7 @@ params = [
 @pytest.mark.parametrize("x", params)
 def test_get_client_first(x):
     cfirst_bare, cfirst = core._get_client_first(
-        USERNAME, x["c_nonce"], x["c_channel_binding"], x["c_use_binding"]
+        x["username"], x["c_nonce"], x["c_channel_binding"], x["c_use_binding"]
     )
 
     assert cfirst_bare == x["cfirst_bare"]
@@ -206,7 +248,7 @@ def test_make_auth_message(x):
 def test_get_client_final(x):
     server_signature, cfinal = core._get_client_final(
         x["hf"],
-        PASSWORD,
+        x["password"],
         x["salt"],
         x["iterations"],
         x["nonce"],
@@ -223,7 +265,10 @@ def test_get_client_final(x):
 @pytest.mark.parametrize("x", params)
 def test_client_order(x):
     c = ScramClient(
-        x["c_mechanisms"], USERNAME, PASSWORD, channel_binding=x["c_channel_binding"]
+        x["c_mechanisms"],
+        x["username"],
+        x["password"],
+        channel_binding=x["c_channel_binding"],
     )
 
     with pytest.raises(ScramException):
@@ -234,8 +279,8 @@ def test_client_order(x):
 def test_client(x):
     c = ScramClient(
         x["c_mechanisms"],
-        USERNAME,
-        PASSWORD,
+        x["username"],
+        x["password"],
         channel_binding=x["c_channel_binding"],
         c_nonce=x["c_nonce"],
     )
@@ -254,7 +299,7 @@ def test_set_client_first(x):
     )
 
     assert nonce == x["nonce"]
-    assert user == USERNAME
+    assert user == x["username"]
     assert cfirst_bare == x["cfirst_bare"]
     assert upgrade_mechanism == (x["s_init_use_binding"] != x["s_use_binding"])
 
@@ -295,8 +340,8 @@ def test_server_order(x):
 
     def auth_fn(username):
         lookup = {
-            USERNAME: m.make_auth_info(
-                PASSWORD, salt=x["salt"], iteration_count=x["iterations"]
+            x["username"]: m.make_auth_info(
+                x["password"], salt=x["salt"], iteration_count=x["iterations"]
             )
         }
         return lookup[username]
@@ -313,8 +358,8 @@ def test_server(x):
 
     def auth_fn(username):
         lookup = {
-            USERNAME: m.make_auth_info(
-                PASSWORD, salt=b64dec(x["salt"]), iteration_count=x["iterations"]
+            x["username"]: m.make_auth_info(
+                x["password"], salt=b64dec(x["salt"]), iteration_count=x["iterations"]
             )
         }
         return lookup[username]
@@ -350,8 +395,8 @@ def test_set_client_first_error():
 
     def auth_fn(username):
         lookup = {
-            USERNAME: m.make_auth_info(
-                PASSWORD, salt=b64dec(x["salt"]), iteration_count=x["iterations"]
+            x["username"]: m.make_auth_info(
+                x["password"], salt=b64dec(x["salt"]), iteration_count=x["iterations"]
             )
         }
         return lookup[username]
@@ -375,8 +420,8 @@ def test_set_client_final_error():
 
     def auth_fn(username):
         lookup = {
-            USERNAME: m.make_auth_info(
-                PASSWORD, salt=b64dec(x["salt"]), iteration_count=x["iterations"]
+            x["username"]: m.make_auth_info(
+                x["password"], salt=b64dec(x["salt"]), iteration_count=x["iterations"]
             )
         }
         return lookup[username]
@@ -402,6 +447,83 @@ def test_set_server_first_error():
 
     with pytest.raises(ScramException, match="other-error"):
         c.set_server_first("e=other-error")
+
+
+def test_set_server_first_missing_param():
+    c = ScramClient(["SCRAM-SHA-256"], "user", "pencil")
+    c.get_client_first()
+    with pytest.raises(
+        ScramException,
+        match="Malformed server first message. Attributes must be separated by a ',' "
+        "and each attribute must start with a letter followed by a '=': other-error",
+    ):
+        c.set_server_first("junk")
+
+
+def test_set_server_final_missing_param():
+    x = EXCHANGE_SCRAM_SHA_256
+    c = ScramClient(
+        x["c_mechanisms"],
+        x["username"],
+        x["password"],
+        c_nonce=x["c_nonce"],
+    )
+    c.get_client_first()
+    c.set_server_first(x["sfirst"])
+    c.get_client_final()
+    with pytest.raises(
+        ScramException,
+        match="Malformed server final message. Attributes must be separated by a ',' "
+        "and each attribute must start with a letter followed by a '=': other-error",
+    ):
+        c.set_server_final("junk")
+
+
+def test_set_client_first_nonsense():
+    m = ScramMechanism(mechanism="SCRAM-SHA-256")
+    s = m.make_server(lambda x: None)
+    with pytest.raises(
+        ScramException, match="The client sent a malformed first message."
+    ):
+        s.set_client_first("junk")
+
+
+def test_set_client_first_missing_param():
+    m = ScramMechanism(mechanism="SCRAM-SHA-256")
+    s = m.make_server(lambda x: None)
+    with pytest.raises(
+        ScramException,
+        match="Malformed client first bare message. Attributes must be separated by a "
+        "',' and each attribute must start with a letter followed by a '=': "
+        "other-error",
+    ):
+        s.set_client_first("n,morejunk,bonusjunk")
+
+
+def test_set_client_final_missing_param():
+    x = EXCHANGE_SCRAM_SHA_256
+    m = ScramMechanism(mechanism="SCRAM-SHA-256")
+
+    def auth_fn(username):
+        lookup = {
+            x["username"]: m.make_auth_info(
+                x["password"], salt=b64dec(x["salt"]), iteration_count=x["iterations"]
+            )
+        }
+        return lookup[username]
+
+    s = m.make_server(
+        auth_fn, channel_binding=x["s_channel_binding"], s_nonce=x["s_nonce"]
+    )
+
+    s.set_client_first(x["cfirst"])
+    s.get_server_first()
+    with pytest.raises(
+        ScramException,
+        match="Malformed client final message. Attributes must be separated by a ',' "
+        "and each attribute must start with a letter followed by a '=': other-error",
+    ):
+        s.set_client_final("junk")
 
 
 def test_make_channel_binding_tls_server_end_point(mocker):

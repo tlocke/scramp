@@ -64,7 +64,7 @@ class ScramException(Exception):
         self.server_error = server_error
 
     def __str__(self):
-        s_str = "" if self.server_error is None else f" {self.server_error}"
+        s_str = "" if self.server_error is None else f": {self.server_error}"
         return super().__str__() + s_str
 
 
@@ -409,8 +409,34 @@ def _make_cbind_input(channel_binding, use_binding):
         raise ScramException(f"The gs2_cbind_flag '{gs2_cbind_flag}' is not recognized")
 
 
-def _parse_message(msg):
-    return {e[0]: e[2:] for e in msg.split(",") if len(e) > 1}
+def _parse_message(msg, desc, *validations):
+    m = {}
+    for p in msg.split(","):
+        if len(p) < 2 or p[1] != "=":
+            raise ScramException(
+                f"Malformed {desc} message. Attributes must be separated by a ',' and "
+                f"each attribute must start with a letter followed by a '='",
+                SERVER_ERROR_OTHER_ERROR,
+            )
+        m[p[0]] = p[2:]
+
+    m = {e[0]: e[2:] for e in msg.split(",")}
+
+    keystr = "".join(m.keys())
+    for validation in validations:
+        if keystr == validation:
+            return m
+
+    if len(validations) == 1:
+        val_str = f"'{validations[0]}'"
+    else:
+        val_str = f"one of {validations}"
+
+    raise ScramException(
+        f"Malformed {desc} message. Expected the attribute list to be {val_str} but "
+        f"found '{keystr}'",
+        SERVER_ERROR_OTHER_ERROR,
+    )
 
 
 def _get_client_first(username, c_nonce, channel_binding, use_binding):
@@ -425,18 +451,30 @@ def _get_client_first(username, c_nonce, channel_binding, use_binding):
 
 
 def _set_client_first(client_first, s_nonce, channel_binding, use_binding):
-    first_comma = client_first.index(",")
-    second_comma = client_first.index(",", first_comma + 1)
+    try:
+        first_comma = client_first.index(",")
+        second_comma = client_first.index(",", first_comma + 1)
+    except ValueError:
+        raise ScramException(
+            "The client sent a malformed first message",
+            SERVER_ERROR_OTHER_ERROR,
+        )
     gs2_header = client_first[:second_comma].split(",")
-    gs2_cbind_flag = gs2_header[0]
-    gs2_char = gs2_cbind_flag[0]
+    try:
+        gs2_cbind_flag = gs2_header[0]
+        gs2_char = gs2_cbind_flag[0]
+    except IndexError:
+        raise ScramException(
+            "The client sent malformed gs2 data",
+            SERVER_ERROR_OTHER_ERROR,
+        )
     upgrade_mechanism = False
 
     if gs2_char == "y":
         if channel_binding is not None:
             raise ScramException(
                 "Recieved GS2 flag 'y' which indicates that the client doesn't think "
-                "the server supports channel binding, but in fact it does.",
+                "the server supports channel binding, but in fact it does",
                 SERVER_ERROR_SERVER_DOES_SUPPORT_CHANNEL_BINDING,
             )
 
@@ -444,7 +482,7 @@ def _set_client_first(client_first, s_nonce, channel_binding, use_binding):
         if use_binding:
             raise ScramException(
                 "Received GS2 flag 'n' which indicates that the client doesn't require "
-                "channel binding, but the server does.",
+                "channel binding, but the server does",
                 SERVER_ERROR_SERVER_DOES_SUPPORT_CHANNEL_BINDING,
             )
 
@@ -452,7 +490,7 @@ def _set_client_first(client_first, s_nonce, channel_binding, use_binding):
         if channel_binding is None:
             raise ScramException(
                 "Received GS2 flag 'p' which indicates that the client requires "
-                "channel binding, but the server does not.",
+                "channel binding, but the server does not",
                 SERVER_ERROR_CHANNEL_BINDING_NOT_SUPPORTED,
             )
         if not use_binding:
@@ -463,18 +501,19 @@ def _set_client_first(client_first, s_nonce, channel_binding, use_binding):
         if cb_name != channel_type:
             raise ScramException(
                 f"Received channel binding name {cb_name} but this server supports the "
-                f"channel binding name {channel_type}.",
+                f"channel binding name {channel_type}",
                 SERVER_ERROR_UNSUPPORTED_CHANNEL_BINDING_TYPE,
             )
 
     else:
         raise ScramException(
-            f"Received GS2 flag {gs2_char} which isn't recognized.",
+            f"Received GS2 flag {gs2_char} which isn't recognized",
             SERVER_ERROR_OTHER_ERROR,
         )
 
     client_first_bare = client_first[second_comma + 1 :]
-    msg = _parse_message(client_first_bare)
+    msg = _parse_message(client_first_bare, "client first bare", "nr")
+
     c_nonce = msg["r"]
     nonce = c_nonce + s_nonce
     user = msg["n"]
@@ -487,9 +526,10 @@ def _get_server_first(nonce, salt, iterations):
 
 
 def _set_server_first(server_first, c_nonce):
-    msg = _parse_message(server_first)
+    msg = _parse_message(server_first, "server first", "rsi")
     if "e" in msg:
         raise ScramException(f"The server returned the error: {msg['e']}")
+
     nonce = msg["r"]
     salt = msg["s"]
     iterations = int(msg["i"])
@@ -557,8 +597,9 @@ def _set_client_final(
     use_binding,
 ):
 
-    msg = _parse_message(client_final)
+    msg = _parse_message(client_final, "client final", "crp")
     chan_binding = msg["c"]
+
     nonce = msg["r"]
     proof = msg["p"]
     if use_binding and b64dec(chan_binding) != _make_cbind_input(
@@ -587,7 +628,7 @@ def _get_server_final(server_signature, error):
 
 
 def _set_server_final(message, server_signature):
-    msg = _parse_message(message)
+    msg = _parse_message(message, "server final", "v", "e")
     if "e" in msg:
         raise ScramException(f"The server returned the error: {msg['e']}")
 

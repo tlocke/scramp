@@ -275,7 +275,7 @@ you'd omit the ``s_nonce`` and ``salt`` parameters and let Scramp generate them:
 ...     # Get the final server message and send it to the client
 ...     sfinal = s.get_server_final()
 ...     print(sfinal)
-Received GS2 flag 'p' which indicates that the client requires channel binding, but the server does not. channel-binding-not-supported
+Received GS2 flag 'p' which indicates that the client requires channel binding, but the server does not: channel-binding-not-supported
 e=channel-binding-not-supported
 
 
