@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@v3
       - name: Install dependencies
         run: |
+          # Add safe directory to work around bug in GitHub actions/checkout
+          git config --global --add safe.directory ${GITHUB_WORKSPACE}
           python -m pip install --upgrade pip
           pip install pytest pytest-mock .
 
