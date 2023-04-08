@@ -42,6 +42,13 @@ Homepage = "https://github.com/tlocke/scramp"
 method = "git"
 default-tag = "0.0.0"
 
+[tool.flake8]
+application-names = ["scramp"]
+ignore = ["E203", "W503"]
+max-line-length = 88
+exclude = [".git", "__pycache__", "build", "dist", "venv", ".tox"]
+application-import-names = ["scramp"]
+
 [tool.tox]
 legacy_tox_ini = """
 [tox]
@@ -58,6 +65,7 @@ deps =
     pytest-mock
     black
     flake8
+    Flake8-pyproject
     flake8-alphabetize
     passlib
 """
