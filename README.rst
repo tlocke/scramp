@@ -470,6 +470,15 @@ Testing
 - Run ``tox``: ``tox``
 
 
+OpenSSF Scorecard
+-----------------
+
+It might be worth running the `OpenSSF Scorecard <https://securityscorecards.dev/>`_::
+
+  sudo docker run -e GITHUB_AUTH_TOKEN=<auth_token> gcr.io/openssf/scorecard:stable \
+  --repo=github.com/tlocke/scramp
+
+
 Doing A Release Of Scramp
 -------------------------
 
