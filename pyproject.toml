@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 name = "scramp"
 description = "An implementation of the SCRAM protocol."
 readme = "README.rst"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 keywords = ["SCRAM", "authentication", "SASL"]
 license = {text = "MIT No Attribution"}
 classifiers = [
@@ -18,10 +18,10 @@ classifiers = [
     "License :: OSI Approved :: MIT No Attribution License (MIT-0)",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: Implementation",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
@@ -29,7 +29,6 @@ classifiers = [
 ]
 dependencies = [
     "asn1crypto >= 1.5.1",
-    'importlib-metadata >= 1.0 ; python_version < "3.8"',
 ]
 dynamic = ["version"]
 
