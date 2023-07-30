@@ -55,11 +55,16 @@ isolated_build = True
 envlist = py
 
 [testenv]
+allowlist_externals=/usr/bin/rm
 commands =
     black --check .
     flake8 .
     pytest -v -x -W error test
+    rm -rf dist
+    python -m build
+    twine check dist/*
 deps =
+    build
     pytest
     pytest-mock
     black
@@ -67,4 +72,5 @@ deps =
     Flake8-pyproject
     flake8-alphabetize
     passlib
+    twine
 """
