@@ -1,14 +1,12 @@
 [build-system]
-requires = [
-    "setuptools>=67",
-    "versioningit >= 2.2.0",
-]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "versioningit"]
+build-backend = "hatchling.build"
 
 [project]
 name = "scramp"
+authors = [{name = "The Contributors"}]
 description = "An implementation of the SCRAM protocol."
-readme = "README.rst"
+readme = "README.md"
 requires-python = ">=3.8"
 keywords = ["SCRAM", "authentication", "SASL"]
 license = {text = "MIT No Attribution"}
@@ -34,6 +32,9 @@ dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/tlocke/scramp"
+
+[tool.hatch.version]
+source = "versioningit"
 
 [tool.versioningit]
 
