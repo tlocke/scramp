@@ -383,6 +383,12 @@ Run `tox` to make sure all tests pass, then update the release notes, then do:
 
 ## Release Notes
 
+### Version 1.4.5, 2024-04-13
+
+- Drop support for Python 3.7, which means we're not dependent on `importlib-metadata` anymore.
+- Various changes to build system, docs and automated testing.
+
+
 ### Version 1.4.4, 2022-11-01
 
 - Tighten up parsing of messages to make sure that a `ScramException` is raised if a message is malformed.
